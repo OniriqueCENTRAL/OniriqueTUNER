@@ -81,7 +81,7 @@ onirique::license::Status OniriqueTunerProcessor::getLicense() const
 void OniriqueTunerProcessor::refreshLicense()
 {
     const auto status = onirique::license::read ("tuner");
-    exportsClean.store (status.exportsClean());
+    demoNoise.setState (status.state);
 
     const juce::ScopedLock lock (licenseLock);
     licenseStatus = status;
@@ -114,18 +114,10 @@ void OniriqueTunerProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                        juce::jlimit (0, buffer.getNumSamples() - 1, e.sampleOffset));
     }
 
-    // Mode démo (plugin non acheté, ou essai gratuit) : l'écoute en temps réel reste intacte,
-    // mais un export (rendu hors temps réel) ne contient que du bruit blanc.
-    if (isNonRealtime() && ! exportsClean.load())
-    {
+    // Mode démo (plugin non acheté, ou essai gratuit) : voir License/DemoNoise.h.
+    if (demoNoise.process (buffer.getArrayOfWritePointers(), buffer.getNumChannels(), buffer.getNumSamples(),
+                           getSampleRate(), isNonRealtime()))
         midi.clear();
-        for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
-        {
-            auto* samples = buffer.getWritePointer (ch);
-            for (int i = 0; i < buffer.getNumSamples(); ++i)
-                samples[i] = (demoNoise.nextFloat() * 2.0f - 1.0f) * 0.25f;
-        }
-    }
 }
 
 //==============================================================================

@@ -10,13 +10,17 @@
 //    OniriqueLicenseTest export <plugin.vst3>
 //        charge le plugin, lui fait traiter une sinusoïde en temps réel puis en export,
 //        et dit si la sortie est du son ou du bruit blanc
+//
+//    OniriqueLicenseTest noise
+//        contrôle quand le mode démo remplace le son par du bruit
 //==============================================================================
-#include "../Source/License/License.h"
+#include "../Source/License/DemoNoise.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include <cmath>
 #include <iostream>
+#include <vector>
 
 namespace
 {
@@ -88,6 +92,31 @@ int main (int argc, char** argv)
 {
     const juce::String mode (argc > 1 ? argv[1] : "");
 
+    if (mode == "noise")
+    {
+        using onirique::license::DemoNoise;
+        using onirique::license::State;
+
+        // Une seconde par bloc : rend les secondes pendant lesquelles le son a été remplacé.
+        const auto noisySeconds = [] (State state, bool offline)
+        {
+            DemoNoise noise;
+            noise.setState (state);
+            std::vector<float> block (1000);
+            float* channels[] = { block.data() };
+            int count = 0;
+            for (int second = 0; second < 60; ++second)
+                count += noise.process (channels, 1, 1000, 1000.0, offline) ? 1 : 0;
+            return count;
+        };
+
+        const bool ok = noisySeconds (State::licensed, false) == 0 && noisySeconds (State::licensed, true) == 0
+                     && noisySeconds (State::trial, false) == 0 && noisySeconds (State::trial, true) == 60
+                     && noisySeconds (State::unlicensed, false) == 4 && noisySeconds (State::unlicensed, true) == 60;
+        std::cout << (ok ? "bruit du mode demo : conforme" : "bruit du mode demo : ECHEC") << std::endl;
+        return ok ? 0 : 1;
+    }
+
     if (mode == "machine")
     {
         std::cout << onirique::license::machineId() << std::endl;
@@ -147,6 +176,6 @@ int main (int argc, char** argv)
         return 0;
     }
 
-    std::cout << "usage : OniriqueLicenseTest machine | verify <lic> <plugin> <machine> <cle> <maintenant> | export <plugin.vst3>" << std::endl;
+    std::cout << "usage : OniriqueLicenseTest noise | machine | verify <lic> <plugin> <machine> <cle> <maintenant> | export <plugin.vst3>" << std::endl;
     return 2;
 }

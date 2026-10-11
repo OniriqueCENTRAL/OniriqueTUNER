@@ -107,9 +107,13 @@ Overlay::Overlay (juce::String productName, std::function<Status()> read, std::f
     openCentral->onClick = []
     {
         // L'application installée pour cet utilisateur ; à défaut, la page de téléchargement.
+       #if JUCE_MAC
+        const juce::File app ("/Applications/ONIRIQUE CENTRAL.app");
+       #else
         const auto app = juce::File::getSpecialLocation (juce::File::userHomeDirectory)
                              .getChildFile ("AppData/Local/Programs/ONIRIQUE CENTRAL/ONIRIQUE CENTRAL.exe");
-        if (! (app.existsAsFile() && app.startAsProcess()))
+       #endif
+        if (! (app.exists() && app.startAsProcess()))
             juce::URL ("https://onirique.store/#telechargement").launchInDefaultBrowser();
     };
 
@@ -216,7 +220,7 @@ void Overlay::paint (juce::Graphics& g)
               + fr ("Le plugin fonctionne normalement en temps réel. Tout export reste remplacé par un bruit blanc tant que le plugin n'est pas acheté.\n\n")
               + fr ("Achetez-le sur onirique.store ou dans ONIRIQUE CENTRAL : l'achat est pris en compte ici en quelques secondes.")
         : product + fr (" n'est pas activé sur ce PC.\n\n")
-              + fr ("Vous pouvez l'essayer en temps réel, mais tout export est remplacé par un bruit blanc.\n\n")
+              + fr ("Sans licence, l'écoute est coupée par un bruit blanc toutes les trente secondes et tout export est remplacé par ce bruit.\n\n")
               + fr ("Ouvrez ONIRIQUE CENTRAL, connectez-vous à votre compte, puis activez le plugin ou lancez son essai gratuit de 7 jours. ")
               + fr ("L'activation est prise en compte ici en quelques secondes.");
 

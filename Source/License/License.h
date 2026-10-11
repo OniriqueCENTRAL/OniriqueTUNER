@@ -20,8 +20,8 @@ namespace onirique::license
 
 enum class State
 {
-    unlicensed, // pas de licence valable sur ce PC : mode démo
-    trial,      // essai gratuit en cours : mode démo, sans rappel d'activation insistant
+    unlicensed, // pas de licence valable sur ce PC : bruit blanc à l'export, et par salves à l'écoute
+    trial,      // essai gratuit en cours : écoute intacte, bruit blanc à l'export
     licensed    // plugin acheté ou abonnement actif
 };
 

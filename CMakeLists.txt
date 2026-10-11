@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(OniriqueTuner VERSION 1.1.0)
+project(OniriqueTuner VERSION 1.1.1)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -79,6 +79,7 @@ target_sources(OniriqueTuner PRIVATE
     Source/GUI/PitchViews.cpp
     Source/License/License.h
     Source/License/License.cpp
+    Source/License/DemoNoise.h
     Source/License/LicenseOverlay.h
     Source/License/LicenseOverlay.cpp
     Source/License/tweetnacl.h

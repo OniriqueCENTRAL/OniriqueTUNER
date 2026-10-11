@@ -1,7 +1,7 @@
 #pragma once
 
 #include "DSP/TuneEngine.h"
-#include "License/License.h"
+#include "License/DemoNoise.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
@@ -97,12 +97,11 @@ private:
     std::atomic<bool> restoringState { false };
     std::atomic<float> editorScale { 1.0f };
 
-    // Licence : l'état complet pour l'interface, et un simple drapeau pour le thread audio.
+    // Licence : l'état complet pour l'interface, et le bruit du mode démo pour le thread audio.
     juce::CriticalSection licenseLock;
     onirique::license::Status licenseStatus;
-    std::atomic<bool> exportsClean { false };
+    onirique::license::DemoNoise demoNoise;
     int licenseTicks = 0;
-    juce::Random demoNoise;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (OniriqueTunerProcessor)
 };
