@@ -1,7 +1,7 @@
-# Compile ONIRIQUE TUNER pour Mac (VST3, Intel et Apple Silicon dans le même plugin).
+# Compile ONIRIQUE TUNER pour Mac : VST3 et Audio Unit (Logic Pro, GarageBand), Intel et Apple Silicon.
 # À lancer depuis l'onglet « Actions » du dépôt GitHub, bouton « Run workflow ».
 # Le résultat se télécharge en bas de la page de l'exécution, rubrique « Artifacts » : il contient
-# « ONIRIQUE TUNER.vst3.zip », le fichier à envoyer dans ONIRIQUE CENTRAL comme version Mac.
+# « ONIRIQUE TUNER.vst3.zip » (le .vst3 et le .component), le fichier à envoyer dans ONIRIQUE CENTRAL comme version Mac.
 name: Plugin Mac
 
 on:
@@ -16,18 +16,33 @@ jobs:
       - name: Compiler
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
-          cmake --build build --config Release --target OniriqueTuner_VST3 --parallel
+          cmake --build build --config Release --target OniriqueTuner_VST3 OniriqueTuner_AU --parallel
 
-      # Sans compte Apple Developer, le plugin porte une signature locale (« ad hoc ») : le minimum pour qu'un DAW
-      # le charge sur un Mac Apple Silicon.
+      # Sans compte Apple Developer, les plugins portent une signature locale (« ad hoc ») : le minimum pour qu'un DAW
+      # les charge sur un Mac Apple Silicon.
       - name: Signer localement et zipper
         run: |
-          PLUGIN="$(find build -type d -name 'ONIRIQUE TUNER.vst3' | head -n 1)"
-          test -n "$PLUGIN"
-          lipo -info "$PLUGIN/Contents/MacOS/ONIRIQUE TUNER"
-          codesign --force --deep --sign - "$PLUGIN"
-          codesign --verify --deep --strict "$PLUGIN"
-          ditto -c -k --keepParent "$PLUGIN" "ONIRIQUE TUNER.vst3.zip"
+          mkdir sortie
+          for NAME in "ONIRIQUE TUNER.vst3" "ONIRIQUE TUNER.component"; do
+            PLUGIN="$(find build -type d -name "$NAME" | head -n 1)"
+            test -n "$PLUGIN"
+            lipo -info "$PLUGIN/Contents/MacOS/ONIRIQUE TUNER"
+            codesign --force --deep --sign - "$PLUGIN"
+            codesign --verify --deep --strict "$PLUGIN"
+            cp -R "$PLUGIN" sortie/
+          done
+          (cd sortie && ditto -c -k . "../ONIRIQUE TUNER.vst3.zip")
+          unzip -l "ONIRIQUE TUNER.vst3.zip" | tail -n 3
+
+      # Le contrôle d'Apple, celui que Logic Pro fait passer à chaque Audio Unit. Un échec ici n'empêche pas de
+      # récupérer le fichier, mais il annonce un plugin que Logic refusera.
+      - name: Valider l'Audio Unit (auval)
+        continue-on-error: true
+        run: |
+          mkdir -p ~/Library/Audio/Plug-Ins/Components
+          cp -R "sortie/ONIRIQUE TUNER.component" ~/Library/Audio/Plug-Ins/Components/
+          killall -9 AudioComponentRegistrar || true
+          auval -v aufx Otn1 Onrq
 
       - uses: actions/upload-artifact@v4
         with:

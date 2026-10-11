@@ -30,11 +30,18 @@ juce_add_binary_data(OniriqueTunerData SOURCES
     Source/GUI/Assets/JetBrainsMono600.ttf)
 set_target_properties(OniriqueTunerData PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
 
+# Sur Mac, le plugin sort aussi en Audio Unit, le seul format que lisent Logic Pro et GarageBand.
+if(APPLE)
+    set(ONIRIQUE_FORMATS VST3 AU)
+else()
+    set(ONIRIQUE_FORMATS VST3)
+endif()
+
 juce_add_plugin(OniriqueTuner
     COMPANY_NAME                "Onirique"
     PLUGIN_MANUFACTURER_CODE    Onrq
     PLUGIN_CODE                 Otn1
-    FORMATS                     VST3
+    FORMATS                     ${ONIRIQUE_FORMATS}
     PRODUCT_NAME                "ONIRIQUE TUNER"
     DESCRIPTION                 "Correction de hauteur pour la voix"
     IS_SYNTH                    FALSE
