@@ -1,0 +1,36 @@
+# Compile ONIRIQUE TUNER pour Mac (VST3, Intel et Apple Silicon dans le même plugin).
+# À lancer depuis l'onglet « Actions » du dépôt GitHub, bouton « Run workflow ».
+# Le résultat se télécharge en bas de la page de l'exécution, rubrique « Artifacts » : il contient
+# « ONIRIQUE TUNER.vst3.zip », le fichier à envoyer dans ONIRIQUE CENTRAL comme version Mac.
+name: Plugin Mac
+
+on:
+  workflow_dispatch:
+
+jobs:
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compiler
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
+          cmake --build build --config Release --target OniriqueTuner_VST3 --parallel
+
+      # Sans compte Apple Developer, le plugin porte une signature locale (« ad hoc ») : le minimum pour qu'un DAW
+      # le charge sur un Mac Apple Silicon.
+      - name: Signer localement et zipper
+        run: |
+          PLUGIN="$(find build -type d -name 'ONIRIQUE TUNER.vst3' | head -n 1)"
+          test -n "$PLUGIN"
+          lipo -info "$PLUGIN/Contents/MacOS/ONIRIQUE TUNER"
+          codesign --force --deep --sign - "$PLUGIN"
+          codesign --verify --deep --strict "$PLUGIN"
+          ditto -c -k --keepParent "$PLUGIN" "ONIRIQUE TUNER.vst3.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ONIRIQUE-TUNER-mac
+          path: ONIRIQUE TUNER.vst3.zip
+          if-no-files-found: error
