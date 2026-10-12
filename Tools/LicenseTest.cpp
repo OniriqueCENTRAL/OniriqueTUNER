@@ -17,7 +17,7 @@
 //    OniriqueLicenseTest noise
 //        contrôle quand le mode démo remplace le son par du bruit
 //==============================================================================
-#include "../Source/License/DemoNoise.h"
+#include "../License/License.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
@@ -229,7 +229,7 @@ int main (int argc, char** argv)
 
         const auto live = run (*plugin, false);
         const auto bounce = run (*plugin, true);
-        const auto describe = [] (const Measure& m) { return m.correlation > 0.9 ? "son" : std::abs (m.correlation) < 0.1 ? "BRUIT BLANC" : "indetermine"; };
+        const auto describe = [] (const Measure& m) { return m.rms < 1.0e-6 ? "silence" : m.correlation > 0.9 ? "son" : std::abs (m.correlation) < 0.1 ? "BRUIT BLANC" : "indetermine"; };
 
         std::cout << "temps reel : rms=" << live.rms << " correlation=" << live.correlation << " -> " << describe (live) << std::endl;
         std::cout << "export     : rms=" << bounce.rms << " correlation=" << bounce.correlation << " -> " << describe (bounce) << std::endl;

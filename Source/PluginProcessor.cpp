@@ -40,7 +40,6 @@ OniriqueTunerProcessor::OniriqueTunerProcessor()
 
     // La latence et les interrupteurs de notes ne se règlent que depuis le
     // thread de messages : ce minuteur y veille, jamais le thread audio.
-    refreshLicense();
     startTimerHz (15);
 }
 
@@ -69,22 +68,7 @@ void OniriqueTunerProcessor::prepareToPlay (double sampleRate, int)
     setLatencySamples (engine.getLatencySamples());
 
     // Beaucoup de DAW rappellent prepareToPlay juste avant un export : la licence est relue à ce moment-là.
-    refreshLicense();
-}
-
-onirique::license::Status OniriqueTunerProcessor::getLicense() const
-{
-    const juce::ScopedLock lock (licenseLock);
-    return licenseStatus;
-}
-
-void OniriqueTunerProcessor::refreshLicense()
-{
-    const auto status = onirique::license::read ("tuner");
-    demoNoise.setState (status.state);
-
-    const juce::ScopedLock lock (licenseLock);
-    licenseStatus = status;
+    license.refresh();
 }
 
 void OniriqueTunerProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
@@ -115,8 +99,7 @@ void OniriqueTunerProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     }
 
     // Mode démo (plugin non acheté, ou essai gratuit) : voir License/DemoNoise.h.
-    if (demoNoise.process (buffer.getArrayOfWritePointers(), buffer.getNumChannels(), buffer.getNumSamples(),
-                           getSampleRate(), isNonRealtime()))
+    if (license.process (buffer, getSampleRate(), isNonRealtime()))
         midi.clear();
 }
 
@@ -215,13 +198,6 @@ void OniriqueTunerProcessor::timerCallback()
     const int latency = wantedLatency();
     if (latency != getLatencySamples())
         setLatencySamples (latency);
-
-    // Toutes les cinq secondes : une activation faite dans ONIRIQUE CENTRAL est prise en compte sans recharger le plugin.
-    if (++licenseTicks >= 75)
-    {
-        licenseTicks = 0;
-        refreshLicense();
-    }
 }
 
 //==============================================================================

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(OniriqueTuner VERSION 1.1.1)
+project(OniriqueTuner VERSION 1.1.2)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -76,14 +76,11 @@ target_sources(OniriqueTuner PRIVATE
     Source/GUI/Controls.h
     Source/GUI/Controls.cpp
     Source/GUI/PitchViews.h
-    Source/GUI/PitchViews.cpp
-    Source/License/License.h
-    Source/License/License.cpp
-    Source/License/DemoNoise.h
-    Source/License/LicenseOverlay.h
-    Source/License/LicenseOverlay.cpp
-    Source/License/tweetnacl.h
-    Source/License/tweetnacl.c)
+    Source/GUI/PitchViews.cpp)
+
+# Licence ONIRIQUE : le dossier License/ est le même dans tous les plugins (voir License/README.md).
+include(License/OniriqueLicense.cmake)
+onirique_add_license(OniriqueTuner)
 
 target_include_directories(OniriqueTuner PRIVATE Source)
 
@@ -102,7 +99,6 @@ target_link_libraries(OniriqueTuner
     PRIVATE
         OniriqueTunerData
         juce::juce_audio_utils
-        juce::juce_cryptography
         juce::juce_gui_extra
     PUBLIC
         juce::juce_recommended_config_flags
@@ -156,8 +152,10 @@ juce_add_console_app(OniriqueLicenseTest PRODUCT_NAME "OniriqueLicenseTest")
 set_target_properties(OniriqueLicenseTest PROPERTIES EXCLUDE_FROM_ALL TRUE)
 target_sources(OniriqueLicenseTest PRIVATE
     Tools/LicenseTest.cpp
-    Source/License/License.cpp
-    Source/License/tweetnacl.c)
+    License/License.cpp
+    License/LicenseCore.cpp
+    License/tweetnacl.c)
+target_include_directories(OniriqueLicenseTest PRIVATE .)
 target_compile_definitions(OniriqueLicenseTest PRIVATE
     JUCE_PLUGINHOST_VST3=1
     JUCE_MODAL_LOOPS_PERMITTED=1
@@ -165,7 +163,6 @@ target_compile_definitions(OniriqueLicenseTest PRIVATE
     JUCE_USE_CURL=0)
 target_link_libraries(OniriqueLicenseTest PRIVATE
     juce::juce_audio_processors
-    juce::juce_cryptography
     juce::juce_recommended_config_flags)
 
 if(MSVC)

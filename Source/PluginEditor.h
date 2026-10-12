@@ -33,7 +33,6 @@ private:
 
     // Pastille « mode démo » et page d'activation, par-dessus l'interface.
     std::unique_ptr<onirique::license::Overlay> licenseOverlay;
-    int licenseTicks = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (OniriqueTunerEditor)
 };

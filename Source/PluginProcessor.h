@@ -1,7 +1,7 @@
 #pragma once
 
 #include "DSP/TuneEngine.h"
-#include "License/DemoNoise.h"
+#include "License/LicenseGuard.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
@@ -57,11 +57,8 @@ public:
     float getEditorScale() const noexcept { return editorScale.load(); }
     void setEditorScale (float newScale) noexcept { editorScale.store (newScale); }
 
-    /** État de la licence sur ce PC (acheté, essai, démo). À lire depuis l'interface. */
-    onirique::license::Status getLicense() const;
-
-    /** Relit le fichier de licence écrit par ONIRIQUE CENTRAL. Jamais depuis le thread audio. */
-    void refreshLicense();
+    /** Licence ONIRIQUE (acheté, essai, démo) : voir License/LicenseGuard.h. */
+    onirique::license::Guard license { "tuner" };
 
 private:
     onirique::tune::EngineParams readParams() const noexcept;
@@ -97,11 +94,6 @@ private:
     std::atomic<bool> restoringState { false };
     std::atomic<float> editorScale { 1.0f };
 
-    // Licence : l'état complet pour l'interface, et le bruit du mode démo pour le thread audio.
-    juce::CriticalSection licenseLock;
-    onirique::license::Status licenseStatus;
-    onirique::license::DemoNoise demoNoise;
-    int licenseTicks = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (OniriqueTunerProcessor)
 };

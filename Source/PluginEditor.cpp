@@ -328,9 +328,7 @@ OniriqueTunerEditor::OniriqueTunerEditor (OniriqueTunerProcessor& p)
     content = std::make_unique<Content> (p);
     addAndMakeVisible (*content);
 
-    licenseOverlay = std::make_unique<onirique::license::Overlay> ("ONIRIQUE TUNER",
-                                                                   [&p] { return p.getLicense(); },
-                                                                   [&p] { p.refreshLicense(); });
+    licenseOverlay = std::make_unique<onirique::license::Overlay> ("ONIRIQUE TUNER", p.license);
     addAndMakeVisible (*licenseOverlay);
 
     const float scale = p.getEditorScale();
@@ -366,9 +364,7 @@ void OniriqueTunerEditor::resized()
 
     if (licenseOverlay != nullptr)
     {
-        licenseOverlay->setTransform (juce::AffineTransform::scale (scale));
-        licenseOverlay->setBounds (0, 0, baseWidth, baseHeight);
-        licenseOverlay->setPillBounds ({ 304, 21, 248, 26 }); // dans l'en-tête, entre le nom du plugin et LIVE / HQ
+        licenseOverlay->fit (getLocalBounds(), scale, { 304, 21, 248, 26 }); // dans l'en-tête, entre le nom du plugin et LIVE / HQ
     }
     tuner.setEditorScale (scale);
 }
@@ -376,13 +372,6 @@ void OniriqueTunerEditor::resized()
 void OniriqueTunerEditor::timerCallback()
 {
     refreshDisplays (1.0 / 30.0);
-
-    // Une fois par seconde : la pastille et la page d'activation suivent l'état de la licence.
-    if (licenseOverlay != nullptr && ++licenseTicks >= 30)
-    {
-        licenseTicks = 0;
-        licenseOverlay->update();
-    }
 }
 
 void OniriqueTunerEditor::refreshDisplays (double seconds)
