@@ -364,7 +364,9 @@ void OniriqueTunerEditor::resized()
 
     if (licenseOverlay != nullptr)
     {
-        licenseOverlay->fit (getLocalBounds(), scale, { 304, 21, 248, 26 }); // dans l'en-tête, entre le nom du plugin et LIVE / HQ
+        // Un bouton de l'en-tête, contre LIVE / HQ, à la hauteur de LATENCY et ON ; sa place suit son texte.
+        const int width = licenseOverlay->pillWidth();
+        licenseOverlay->fit (getLocalBounds(), scale, { 572 - width, 18, width, 30 });
     }
     tuner.setEditorScale (scale);
 }

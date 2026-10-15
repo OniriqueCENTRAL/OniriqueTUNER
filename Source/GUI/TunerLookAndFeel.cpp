@@ -1,4 +1,5 @@
 #include "TunerLookAndFeel.h"
+#include "OniriqueKnob.h"
 
 namespace onirique::ui
 {
@@ -16,63 +17,18 @@ TunerLookAndFeel::TunerLookAndFeel()
 }
 
 //==============================================================================
-//  Potard : piste et arc braise autour d'un corps sombre, repère clair.
-//  Mêmes proportions que les potards du site (dessinés dans un carré de 100).
+//  Potard : le potard ONIRIQUE commun aux plugins de la marque (OniriqueKnob.h).
 //==============================================================================
 void TunerLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height, float sliderPos,
                                          float rotaryStartAngle, float rotaryEndAngle, juce::Slider& slider)
 {
     const auto bounds = juce::Rectangle<int> (x, y, width, height).toFloat();
-    const float size = juce::jmin (bounds.getWidth(), bounds.getHeight());
-    const float unit = size / 100.0f;
-    const auto centre = bounds.getCentre();
-    const float angle = rotaryStartAngle + sliderPos * (rotaryEndAngle - rotaryStartAngle);
     const bool hot = slider.isMouseOverOrDragging();
     const bool bipolar = (bool) slider.getProperties().getWithDefault ("bipolar", false);
 
-    const float arcRadius = 43.0f * unit;
-    const juce::PathStrokeType stroke (5.5f * unit, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
-
-    juce::Path track;
-    track.addCentredArc (centre.x, centre.y, arcRadius, arcRadius, 0.0f, rotaryStartAngle, rotaryEndAngle, true);
-    g.setColour (palette::line());
-    g.strokePath (track, stroke);
-
-    const float from = bipolar ? juce::jmin (angle, juce::MathConstants<float>::twoPi) : rotaryStartAngle;
-    const float to = bipolar ? juce::jmax (angle, juce::MathConstants<float>::twoPi) : angle;
-    if (to - from > 0.01f)
-    {
-        juce::Path arc;
-        arc.addCentredArc (centre.x, centre.y, arcRadius, arcRadius, 0.0f, from, to, true);
-
-        const auto colour = hot ? palette::emberHot : palette::ember;
-        strokeGlow (g, arc, colour, 5.5f * unit, (hot ? 3.2f : 2.0f) * unit);
-        g.setColour (colour);
-        g.strokePath (arc, stroke);
-    }
-
-    const float bodyRadius = 32.0f * unit;
-    const auto body = juce::Rectangle<float> (bodyRadius * 2.0f, bodyRadius * 2.0f).withCentre (centre);
-
-    g.setColour (juce::Colours::black.withAlpha (0.45f));
-    g.fillEllipse (body.translated (0.0f, 2.5f * unit).expanded (1.5f * unit));
-
-    juce::ColourGradient shade (juce::Colour (0xff4a2a2e), body.getX() + body.getWidth() * 0.36f, body.getY() + body.getHeight() * 0.3f,
-                                juce::Colour (0xff0b0506), body.getX() + body.getWidth() * 0.36f + body.getWidth() * 0.8f, body.getY() + body.getHeight() * 0.3f,
-                                true);
-    shade.addColour (0.55, juce::Colour (0xff1d0d10));
-    g.setGradientFill (shade);
-    g.fillEllipse (body);
-
-    g.setColour (juce::Colours::white.withAlpha (0.08f));
-    g.drawEllipse (body, 1.2f * unit);
-
-    juce::Path pointer;
-    pointer.startNewSubPath (centre.x, centre.y - 13.0f * unit);
-    pointer.lineTo (centre.x, centre.y - 26.0f * unit);
-    pointer.applyTransform (juce::AffineTransform::rotation (angle, centre.x, centre.y));
-    g.setColour (palette::bone);
-    g.strokePath (pointer, juce::PathStrokeType (3.6f * unit, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    // Le potard ONIRIQUE, le même dans tous les plugins de la marque (OniriqueKnob.h) : graduations allumées jusqu'à la
+    // valeur (depuis le centre si bipolaire), corps biseauté, aiguille à l'étoile.
+    onirique::ui::drawKnob (g, bounds, sliderPos, rotaryStartAngle, rotaryEndAngle, palette::ember, bipolar, hot);
 }
 
 //==============================================================================
