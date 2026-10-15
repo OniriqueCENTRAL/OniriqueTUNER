@@ -52,6 +52,7 @@ public:
 
     /** Le vocodeur est-il en marche ? (pour l'affichage) */
     bool isVocoderOn() const noexcept { return vocoder->load() > 0.5f; }
+    bool isHardTuneOn() const noexcept { return hardTune->load() > 0.5f; }
 
     /** Taille de l'interface (1 = taille de base), mémorisée avec le projet. */
     float getEditorScale() const noexcept { return editorScale.load(); }
@@ -74,6 +75,7 @@ private:
     std::atomic<float>* key = nullptr;
     std::atomic<float>* scale = nullptr;
     std::atomic<float>* retune = nullptr;
+    std::atomic<float>* hardTune = nullptr;
     std::atomic<float>* flex = nullptr;
     std::atomic<float>* humanize = nullptr;
     std::atomic<float>* vibrato = nullptr;

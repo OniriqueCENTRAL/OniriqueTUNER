@@ -20,10 +20,11 @@ branches.
 | **Input Type** | Registre de la voix (Soprano, Alto / Tenor, Low Male) ou instrument. Aide le détecteur et fixe la latence du mode HQ. |
 | **Key / Scale** | Tonalité et gamme. Les notes allumées sont celles vers lesquelles la voix est ramenée. |
 | **Notes** | Un clic retire une note de la gamme, ou en ajoute une. Changer de tonalité ou de gamme remet les notes à zéro. |
-| **Retune Speed** | 0 ms : correction instantanée (effet « hard-tune »). 20 à 50 ms : correction serrée mais naturelle. Au-delà : très discret. |
-| **Flex-Tune** | Ne corrige que lorsque la voix s'approche d'une note ; laisse libres les glissés et les effets volontaires. |
-| **Humanize** | Relâche la correction sur les notes tenues, sans toucher aux notes brèves. |
-| **Natural Vibrato** | Atténue (vers la gauche) ou accentue (vers la droite) le vibrato du chanteur. |
+| **HARD TUNE** | L'effet robot : la voix est posée exactement sur la note, plate, et saute d'une note à l'autre sans transition. Éteint (par défaut), l'accordage est naturel : la note est juste mais la voix garde son vibrato, ses inflexions et ses glissés. |
+| **Retune Speed** | Accordage naturel : vitesse à laquelle la note est ramenée (0 ms : serré, la voix tombe juste tout de suite ; 20 à 60 ms : naturel ; au-delà : très discret). Avec HARD TUNE : netteté des sauts entre notes (0 ms = sauts francs). |
+| **Flex-Tune** | Ne corrige que lorsque la voix s'approche d'une note ; laisse libres les glissés et les effets volontaires. Sans effet avec HARD TUNE. |
+| **Humanize** | Relâche la correction sur les notes tenues, sans toucher aux notes brèves. Sans effet avec HARD TUNE. |
+| **Natural Vibrato** | Atténue (vers la gauche, -12 = note plate) ou accentue (vers la droite) le vibrato du chanteur. Sans effet avec HARD TUNE. |
 | **Formant** | Éteint : son classique, le timbre suit la note. Allumé : le timbre est préservé, utile pour les grosses transpositions. |
 | **Throat** | Longueur de gorge (avec Formant) : plus long = voix plus sombre, plus court = plus claire. |
 | **Transpose / Detune** | Transposition en demi-tons ; diapason (440 Hz par défaut). |
@@ -63,7 +64,20 @@ un potard pour revenir à sa valeur par défaut.
 2. **Tri** (`DSP/TuneEngine`) : ce qui est très en dessous du niveau récent
    de la voix (repisse du casque, queue de réverbération) est laissé intact.
 3. **Choix de la note** (`DSP/PitchCorrector`) : note la plus proche dans la
-   gamme (avec hystérésis), puis Retune Speed, Flex-Tune, Humanize, vibrato.
+   gamme (avec hystérésis), puis la correction, de deux façons :
+   - **naturelle** : la hauteur chantée est séparée en un *centre* (la note
+     visée, vibrato ôté, qui rattrape vite un vrai changement de note) et ce
+     qui bouge autour. Sur une note tenue, seul le centre est ramené sur la
+     note : vibrato et micro-variations restent ceux du chanteur. À
+     l'attaque, c'est l'écart instantané qui est corrigé, pour que la note
+     tombe juste tout de suite. Un écart plus large qu'un vibrato (au-delà
+     de 30 à 80 cents) est ramené progressivement. Le recalage a deux pôles
+     (pas d'angle) et se fige pendant un glissé rapide, qui garde sa forme
+     au lieu de faire des marches d'escalier. Le vibrato, même large, ne
+     fait pas basculer la note ; une voix à mi-chemin entre deux notes n'est
+     tirée vers aucune.
+   - **HARD TUNE** : la sortie est la note elle-même, plate, et saute d'une
+     note à l'autre (en Retune Speed, ou instantanément à 0 ms).
 4. **Transposition** (`DSP/TuneEngine`) : grains synchrones à la période de la
    voix (PSOLA). En son classique chaque grain est relu plus ou moins vite ;
    avec Formant il est replacé tel quel à la nouvelle période.
@@ -78,10 +92,9 @@ La différence entre LIVE et HQ tient au placement des grains :
 - **HQ** voit venir la voix : chaque période est mesurée de part et d'autre du
   grain, et la courbe de hauteur est lissée avec de l'avance.
 
-Avec un Retune Speed de 20 ms ou plus, la voix est simplement transposée par
-la correction : elle garde ses micro-variations naturelles, dans les deux
-modes. En dessous, la hauteur de sortie est imposée (voix parfaitement
-plate à 0 ms).
+En accordage naturel, la voix est simplement transposée par la correction :
+elle garde ses micro-variations, cycle par cycle. Avec HARD TUNE, la hauteur
+de sortie est imposée (voix parfaitement plate).
 
 ## Ce qui a été vérifié
 
@@ -91,10 +104,16 @@ passent, y compris sous AddressSanitizer (aucune erreur mémoire signalée).
 **Justesse**, sur des voix de synthèse à la hauteur et au timbre connus :
 
 - un son non voisé (bruit, consonnes) ressort **bit pour bit** ;
-- hard-tune : à **moins de 0,1 cent** de la note sur une voix (0,5 cent au
+- HARD TUNE : à **moins de 0,1 cent** de la note sur une voix (0,5 cent au
   pire, sur un instrument très aigu), aussi propre que la voix d'origine ;
-- vibrato de ± 40 cents, Retune 0 : il en reste 0,06 cent en HQ et 1,8 cent
-  en LIVE ; avec un Retune lent il est intact.
+- note chantée 30 cents trop bas avec un vibrato de ± 40 cents : en
+  accordage naturel la note est recentrée à **0,2 cent** près et le vibrato
+  est gardé (écart-type 27 cents, comme la voix d'origine), quel que soit le
+  Retune ; Natural Vibrato -12 l'efface (3 cents), +12 le double ; HARD
+  TUNE aplatit tout (0,06 cent en HQ, 1,8 cent en LIVE) ;
+- mélodie liée (glissés de 60 ms, notes fausses de 10 à 30 cents) : en
+  accordage naturel 97 à 98 % des notes tenues à moins de 5 cents, 100 %
+  avec HARD TUNE.
 
 **Voix réalistes** (irrégularité d'un cycle à l'autre, souffle, voyelles qui
 changent, consonnes, silences, bruit de fond ; neuf voix : homme et femme,
@@ -102,10 +121,13 @@ claire, soufflée, rauque, bruitée, grave, soprano) : 100 % des notes tenues
 reconnues, 0,1 % de consonnes ou silences pris pour une note, moins de 1 %
 d'erreurs d'octave.
 
-**Vraies prises** (ad-libs rap non corrigés, do mineur, Retune 0), hauteur
-obtenue remesurée par un second détecteur : la voix brute est en moyenne à
-45 cents de la gamme ; elle tombe à **environ 4 cents en HQ** et **5 à
-9 cents en LIVE**. Aucun clic détecté.
+**Vraies prises** (lead et ad-libs rap non corrigés, si bémol mineur,
+`--minor=Bb`), hauteur obtenue remesurée par un second détecteur : la voix
+brute est en moyenne à 38 à 41 cents de la gamme. HARD TUNE la ramène à
+**2 à 4 cents en HQ**, 5 à 6 en LIVE. L'accordage naturel la ramène à 13 à
+16 cents (Retune 0) ou 18 à 20 cents (Retune 20, HQ) en gardant toutes ses
+inflexions : c'est voulu, une voix qui bouge sans arrêt ne peut pas être
+plate et naturelle à la fois. Aucun clic détecté.
 
 **Vocodeur** : le synthé joue la note de la gamme à moins d'un demi-cent
 (ses deux dents de scie sont volontairement écartées de 7 cents), sort au
@@ -124,7 +146,7 @@ casque laissée intacte.
 en stéréo (à 48 kHz).
 
 `OniriqueTunerHostTest` charge le fichier `.vst3` dans un hôte VST3 : nom,
-30 paramètres, bypass, latence déclarée égale au retard réel (0 en LIVE,
+31 paramètres, bypass, latence déclarée égale au retard réel (0 en LIVE,
 35,4 ms en HQ à 48 kHz), sauvegarde et rechargement, sortie MIDI du
 vocodeur, 1200 blocs avec tous les réglages automatisés au hasard, interface
 ouverte et fermée.
@@ -161,8 +183,8 @@ cmake --build build-tests --config Release
 build-tests/Release/engine_test.exe
 build-tests/Release/engine_test.exe vocodeur
 
-# moteur seul sur des fichiers : écrit les versions LIVE, HQ et vocodeur dans Tests/out
-build-tests/Release/engine_test.exe Tests/out "chemin/prise.wav"
+# moteur seul sur des fichiers (gamme mineure au choix, do par défaut) : écrit les versions naturelles et HARD TUNE dans Tests/out
+build-tests/Release/engine_test.exe Tests/out --minor=Bb "chemin/prise.wav"
 
 # rendu de l'interface dans une image, sans DAW
 cmake --build build --config Release --target OniriqueTunerSnapshot

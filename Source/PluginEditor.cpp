@@ -73,6 +73,7 @@ public:
         : tuner (p),
           modeSwitch (*p.apvts.getParameter (ids::mode), { "LIVE", "HQ" }),
           power (*p.apvts.getParameter (ids::bypass), "ON", "OFF", true),
+          hardTuneButton (*p.apvts.getParameter (ids::hardTune), "HARD TUNE", "HARD TUNE"),
           notes (p.apvts, [&p] { return p.getNoteMask(); }),
           formantButton (*p.apvts.getParameter (ids::formant), "FORMANT", "FORMANT"),
           throat (p.apvts, ids::throat, "Throat", true),
@@ -104,7 +105,7 @@ public:
         scaleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (p.apvts, ids::scale, scaleBox);
         voicingAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (p.apvts, ids::voicing, voicingBox);
 
-        for (auto* child : std::initializer_list<juce::Component*> { &dial, &trace, &modeSwitch, &latency, &power, &inputBox, &keyBox, &scaleBox,
+        for (auto* child : std::initializer_list<juce::Component*> { &dial, &trace, &modeSwitch, &latency, &power, &hardTuneButton, &inputBox, &keyBox, &scaleBox,
                                                                       &notes, &formantButton, &throat, &transpose, &detune, &vocoderButton,
                                                                       &voicingBox, &blend, &tracking, &retune, &flex, &humanize, &vibrato, &mix })
             addAndMakeVisible (child);
@@ -140,6 +141,18 @@ public:
             throat.setAlpha (preserve ? 1.0f : 0.4f);
         }
 
+        // Hard Tune impose une note plate : Flex-Tune, Humanize et Natural
+        // Vibrato n'ont plus rien à régler.
+        const bool natural = ! tuner.isHardTuneOn();
+        if (natural != flex.isEnabled())
+        {
+            for (auto* knob : { &flex, &humanize, &vibrato })
+            {
+                knob->setEnabled (natural);
+                knob->setAlpha (natural ? 1.0f : 0.4f);
+            }
+        }
+
         // Les réglages du vocodeur s'éclairent quand il est en marche.
         const bool vocoding = tuner.isVocoderOn();
         dial.setVocoder (vocoding);
@@ -168,6 +181,13 @@ public:
 
         g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
         g.drawImage (background, getLocalBounds().toFloat());
+    }
+
+    /** HARD TUNE se range dans l'en-tête, à gauche de la pastille de licence
+        dont la largeur suit son texte. */
+    void placeHardTune (int right)
+    {
+        hardTuneButton.setBounds (right - 124, 18, 124, 30);
     }
 
 private:
@@ -305,7 +325,7 @@ private:
     PitchTrace trace;
     ChoiceSwitch modeSwitch;
     Chip latency;
-    LedButton power;
+    LedButton power, hardTuneButton;
     juce::ComboBox inputBox, keyBox, scaleBox;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> inputAttachment, keyAttachment, scaleAttachment;
     NoteGrid notes;
@@ -367,6 +387,11 @@ void OniriqueTunerEditor::resized()
         // Un bouton de l'en-tête, contre LIVE / HQ, à la hauteur de LATENCY et ON ; sa place suit son texte.
         const int width = licenseOverlay->pillWidth();
         licenseOverlay->fit (getLocalBounds(), scale, { 572 - width, 18, width, 30 });
+        content->placeHardTune (572 - width - 10);
+    }
+    else
+    {
+        content->placeHardTune (572);
     }
     tuner.setEditorScale (scale);
 }

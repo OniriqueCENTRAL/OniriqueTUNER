@@ -558,7 +558,7 @@ void testTransparency (double fs)
 
 void testHardTune (double fs)
 {
-    std::printf ("\n[2] Hard-tune : voix 35 cents trop haute, gamme chromatique, Retune 0\n");
+    std::printf ("\n[2] Hard Tune : voix 35 cents trop haute, gamme chromatique, Retune 0\n");
     std::printf ("    mode            justesse (cents)        proprete   timbre\n");
 
     const VoiceModel model (fs);
@@ -574,6 +574,7 @@ void testHardTune (double fs)
             p.hq = hq;
             p.formant = formant;
             p.retuneMs = 0.0f;
+            p.hardTune = true;
             const auto out = run (voice, fs, p);
 
             const auto stats = pitchStats (out, fs, (int) (0.5 * fs), (int) (2.8 * fs), [target] (double) { return target; });
@@ -649,46 +650,63 @@ void testScaleAndTranspose (double fs)
 
 void testVibrato (double fs)
 {
-    std::printf ("\n[4] Vibrato : la3 avec +/- 40 cents a 5,5 Hz\n");
+    std::printf ("\n[4] Vibrato : la3 30 cents trop bas, avec +/- 40 cents a 5,5 Hz\n");
 
     const VoiceModel model (fs);
     const double centre = 220.0;
-    const auto sung = [centre] (double t) { return centre * std::pow (2.0, 40.0 / 1200.0 * std::sin (2.0 * pi * 5.5 * t)); };
+    const double flatBy = std::pow (2.0, -30.0 / 1200.0);
+    const auto sung = [=] (double t) { return centre * flatBy * std::pow (2.0, 40.0 / 1200.0 * std::sin (2.0 * pi * 5.5 * t)); };
     const auto voice = synthVoice (model, 4.0, sung);
 
     const auto flat = [centre] (double) { return centre; };
     const auto inputStats = pitchStats (voice, fs, (int) (1.0 * fs), (int) (3.8 * fs), flat);
-    std::printf ("    voix d'origine                     ecart-type %5.2f cents\n", inputStats.spreadCents);
+    std::printf ("    voix d'origine                         moyenne %+6.2f cents, ecart-type %5.2f cents\n", inputStats.meanCents, inputStats.spreadCents);
+
+    const auto runWith = [&] (bool hq, bool hard, float retune, float vibrato)
+    {
+        EngineParams p;
+        p.hq = hq;
+        p.hardTune = hard;
+        p.retuneMs = retune;
+        p.vibrato = vibrato;
+        return pitchStats (run (voice, fs, p), fs, (int) (1.0 * fs), (int) (3.8 * fs), flat);
+    };
 
     for (bool hq : { false, true })
     {
-        for (float retune : { 0.0f, 400.0f })
+        // Accordage naturel : la note est recentrée, le vibrato reste celui du chanteur.
+        for (float retune : { 0.0f, 20.0f, 400.0f })
         {
-            EngineParams p;
-            p.hq = hq;
-            p.retuneMs = retune;
-            const auto out = run (voice, fs, p);
-            const auto stats = pitchStats (out, fs, (int) (1.0 * fs), (int) (3.8 * fs), flat);
-            std::printf ("    %s Retune %3.0f ms               ecart-type %5.2f cents (moyenne %+.2f)\n", hq ? "HQ  " : "LIVE",
-                         (double) retune, stats.spreadCents, stats.meanCents);
+            const auto stats = runWith (hq, false, retune, 0.0f);
+            std::printf ("    %s naturel Retune %3.0f ms          moyenne %+6.2f cents, ecart-type %5.2f cents\n", hq ? "HQ  " : "LIVE",
+                         (double) retune, stats.meanCents, stats.spreadCents);
 
-            // En LIVE le moteur ne voit pas venir la voix : il reste un léger
-            // résidu de vibrato. En HQ il doit disparaître.
-            if (retune == 0.0f)
-                check (stats.spreadCents < (hq ? 1.0 : 3.5), "Retune 0 doit aplatir le vibrato");
-            else
-                check (stats.spreadCents > 0.5 * inputStats.spreadCents, "un Retune lent doit laisser vivre le vibrato");
+            check (std::abs (stats.spreadCents - inputStats.spreadCents) < 0.2 * inputStats.spreadCents, "l'accordage naturel doit garder le vibrato");
+            if (retune < 100.0f)
+                check (std::abs (stats.meanCents) < 3.0, "l'accordage naturel doit recentrer la note");
         }
+
+        // Hard Tune : la note est plate. (Sur une voix fausse dont le vibrato
+        // franchit le milieu de deux notes, il saute de l'une à l'autre, comme
+        // Auto-Tune à 0 ms : on le juge ici sur un vibrato centré.)
+        const auto centred = synthVoice (model, 4.0, [=] (double t) { return centre * std::pow (2.0, 40.0 / 1200.0 * std::sin (2.0 * pi * 5.5 * t)); });
+        EngineParams hp;
+        hp.hq = hq;
+        hp.hardTune = true;
+        hp.retuneMs = 0.0f;
+        const auto hard = pitchStats (run (centred, fs, hp), fs, (int) (1.0 * fs), (int) (3.8 * fs), flat);
+        std::printf ("    %s Hard Tune                     moyenne %+6.2f cents, ecart-type %5.2f cents\n", hq ? "HQ  " : "LIVE",
+                     hard.meanCents, hard.spreadCents);
+        check (hard.spreadCents < (hq ? 1.0 : 3.5) && std::abs (hard.meanCents) < 1.0, "Hard Tune doit aplatir la note");
     }
 
-    // Natural Vibrato à fond sur un Retune 0 : le vibrato doit revenir.
-    EngineParams p;
-    p.retuneMs = 0.0f;
-    p.vibrato = 1.0f;
-    const auto out = run (voice, fs, p);
-    const auto stats = pitchStats (out, fs, (int) (1.0 * fs), (int) (3.8 * fs), flat);
-    std::printf ("    LIVE Retune 0 + Natural Vibrato +12 ecart-type %5.2f cents\n", stats.spreadCents);
-    check (stats.spreadCents > 0.5 * inputStats.spreadCents, "Natural Vibrato doit rendre le vibrato");
+    // Natural Vibrato : -12 efface le vibrato, +12 l'accentue.
+    const auto less = runWith (true, false, 20.0f, -1.0f);
+    const auto more = runWith (true, false, 20.0f, 1.0f);
+    std::printf ("    HQ naturel, Natural Vibrato -12        moyenne %+6.2f cents, ecart-type %5.2f cents\n", less.meanCents, less.spreadCents);
+    std::printf ("    HQ naturel, Natural Vibrato +12        moyenne %+6.2f cents, ecart-type %5.2f cents\n", more.meanCents, more.spreadCents);
+    check (less.spreadCents < 0.35 * inputStats.spreadCents, "Natural Vibrato -12 doit effacer le vibrato");
+    check (more.spreadCents > 1.5 * inputStats.spreadCents, "Natural Vibrato +12 doit accentuer le vibrato");
 }
 
 void testMelody (double fs)
@@ -714,11 +732,13 @@ void testMelody (double fs)
     const auto voice = synthVoice (model, 6 * noteLength, [&] (double t) { return 440.0 * std::pow (2.0, (midiAt (t) - 69.0) / 12.0); });
     const std::uint16_t aMinor = pitchClassMask (scales[2].mask, 9);
 
-    for (bool hq : { false, true })
+    for (int pass = 0; pass < 4; ++pass)
     {
+        const bool hq = (pass & 1) != 0, hard = pass >= 2;
         EngineParams p;
         p.hq = hq;
-        p.retuneMs = 0.0f;
+        p.hardTune = hard;
+        p.retuneMs = hard ? 0.0f : 20.0f;
         p.noteMask = aMinor;
         const auto out = run (voice, fs, p);
 
@@ -744,7 +764,8 @@ void testMelody (double fs)
             ++total;
         }
 
-        std::printf ("    %s  %d / %d fenetres a moins de 5 cents de la note (pire ecart %.1f cents)\n", hq ? "HQ  " : "LIVE", onNote, total, worst);
+        std::printf ("    %s %-9s  %d / %d fenetres a moins de 5 cents de la note (pire ecart %.1f cents)\n", hq ? "HQ  " : "LIVE",
+                     hard ? "Hard Tune" : "naturel", onNote, total, worst);
         check (onNote >= total * 95 / 100, "les notes tenues doivent etre justes");
     }
 }
@@ -1508,6 +1529,9 @@ void testVocoder (double fs)
     }
 }
 
+// Gamme mineure des fichiers traités (--minor=Bb), do mineur par défaut.
+std::uint16_t fileScale = pitchClassMask (scales[2].mask, 0);
+
 void processFile (const std::string& path, const std::string& outDir)
 {
     Audio audio;
@@ -1571,7 +1595,7 @@ void processFile (const std::string& path, const std::string& outDir)
     name = name.substr (0, name.find_last_of ('.'));
     std::printf ("    %s : %d Hz, %d canal(aux)\n", name.c_str(), audio.sampleRate, (int) audio.channels.size());
 
-    const std::uint16_t cMinor = pitchClassMask (scales[2].mask, 0);
+    const std::uint16_t cMinor = fileScale;
 
     struct Variant
     {
@@ -1581,16 +1605,16 @@ void processFile (const std::string& path, const std::string& outDir)
         bool formant;
         bool vocoder;
         int voicing;
+        bool hard = false;
     };
 
     const Variant variants[] = {
         { "sans correction", false, 0.0f, false, false, 0 },
-        { "LIVE retune0",  false, 0.0f,  false, false, 0 },
-        { "HQ retune0",    true,  0.0f,  false, false, 0 },
-        { "HQ retune25",   true,  25.0f, false, false, 0 },
-        { "HQ retune0 formant", true, 0.0f, true, false, 0 },
-        { "VOCODER mono",  false, 20.0f, false, true, 0 },
-        { "VOCODER accord", false, 20.0f, false, true, 3 },
+        { "naturel HQ retune20",  true,  20.0f, false, false, 0 },
+        { "naturel LIVE retune20", false, 20.0f, false, false, 0 },
+        { "naturel HQ retune0",   true,  0.0f,  false, false, 0 },
+        { "HARD TUNE HQ",        true,  0.0f,  false, false, 0, true },
+        { "HARD TUNE LIVE",      false, 0.0f,  false, false, 0, true },
     };
 
     for (const auto& v : variants)
@@ -1602,6 +1626,7 @@ void processFile (const std::string& path, const std::string& outDir)
         p.hq = v.hq;
         p.retuneMs = v.retune;
         p.formant = v.formant;
+        p.hardTune = v.hard;
         p.vocoder = v.vocoder;
         p.vocoderVoicing = v.voicing;
         p.noteMask = cMinor;
@@ -1771,7 +1796,22 @@ int main (int argc, char** argv)
     {
         std::printf ("\nFichiers\n");
         for (int i = 2; i < argc; ++i)
-            processFile (argv[i], argv[1]);
+        {
+            const std::string arg = argv[i];
+            if (arg.rfind ("--minor=", 0) == 0)
+            {
+                const std::string name = arg.substr (8);
+                static const char* names[] = { "C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B" };
+                static const char* sharps[] = { "C", "Db", "D", "D#", "E", "F", "Gb", "G", "G#", "A", "A#", "B" };
+                for (int k = 0; k < 12; ++k)
+                    if (name == names[k] || name == sharps[k])
+                        fileScale = pitchClassMask (scales[2].mask, k);
+            }
+            else
+            {
+                processFile (arg, argv[1]);
+            }
+        }
     }
     else
     {

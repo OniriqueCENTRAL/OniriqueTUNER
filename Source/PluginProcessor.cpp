@@ -17,6 +17,7 @@ OniriqueTunerProcessor::OniriqueTunerProcessor()
     key = apvts.getRawParameterValue (ids::key);
     scale = apvts.getRawParameterValue (ids::scale);
     retune = apvts.getRawParameterValue (ids::retune);
+    hardTune = apvts.getRawParameterValue (ids::hardTune);
     flex = apvts.getRawParameterValue (ids::flex);
     humanize = apvts.getRawParameterValue (ids::humanize);
     vibrato = apvts.getRawParameterValue (ids::vibrato);
@@ -124,6 +125,7 @@ onirique::tune::EngineParams OniriqueTunerProcessor::readParams() const noexcept
     p.inputType = juce::roundToInt (input->load());
     p.noteMask = getNoteMask();
     p.retuneMs = retune->load();
+    p.hardTune = hardTune->load() > 0.5f;
     p.flex = flex->load() * 0.01f;
     p.humanize = humanize->load() * 0.01f;
     p.vibrato = vibrato->load() / 12.0f;

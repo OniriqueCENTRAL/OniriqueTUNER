@@ -12,6 +12,7 @@ namespace id
     inline constexpr const char* key       = "key";
     inline constexpr const char* scale     = "scale";
     inline constexpr const char* retune    = "retune";
+    inline constexpr const char* hardTune  = "hardtune";    // effet robot
     inline constexpr const char* flex      = "flex";
     inline constexpr const char* humanize  = "humanize";
     inline constexpr const char* vibrato   = "vibrato";

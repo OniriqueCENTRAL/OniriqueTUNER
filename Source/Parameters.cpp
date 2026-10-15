@@ -58,6 +58,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
                                          Range (0.0f, 400.0f, 0.1f, 0.45f), 20.0f,
                                          withText ([] (float v) { return juce::String (v, v < 10.0f ? 1 : 0) + " ms"; })));
 
+    layout.add (std::make_unique<Bool> (juce::ParameterID { id::hardTune, 1 }, "Hard Tune", false));
+
     layout.add (std::make_unique<Float> (juce::ParameterID { id::flex, 1 }, "Flex-Tune", Range (0.0f, 100.0f, 0.1f), 0.0f, percent));
     layout.add (std::make_unique<Float> (juce::ParameterID { id::humanize, 1 }, "Humanize", Range (0.0f, 100.0f, 0.1f), 0.0f, percent));
 

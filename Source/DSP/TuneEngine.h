@@ -19,6 +19,7 @@ struct EngineParams
     int inputType = 1;                   // voir TuneEngine::inputTypeNames
     std::uint16_t noteMask = 0x0fff;     // classes de hauteur autorisées (bit 0 = do)
     float retuneMs = 20.0f;
+    bool hardTune = false;               // effet robot : notes plates, sauts francs
     float flex = 0.0f;                   // 0..1
     float humanize = 0.0f;               // 0..1
     float vibrato = 0.0f;                // -1..1

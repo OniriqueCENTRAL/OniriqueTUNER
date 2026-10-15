@@ -318,6 +318,7 @@ void TuneEngine::setParams (const EngineParams& p) noexcept
     formantSpeed = 1.0 / (double) params.throat;
 
     correctorParams.retuneMs = params.retuneMs;
+    correctorParams.hard = params.hardTune;
     correctorParams.flex = params.flex;
     correctorParams.humanize = params.humanize;
     correctorParams.vibrato = params.vibrato;
