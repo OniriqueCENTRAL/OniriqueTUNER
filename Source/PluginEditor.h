@@ -28,6 +28,7 @@ private:
     void timerCallback() override;
 
     OniriqueTunerProcessor& tuner;
+    bool sizeRestored = false;   // les redimensionnements de la construction ne sont pas gardés
     onirique::ui::TunerLookAndFeel lookAndFeel;
     std::unique_ptr<Content> content;
 

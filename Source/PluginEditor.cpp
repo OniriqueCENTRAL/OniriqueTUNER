@@ -3,6 +3,7 @@
 #include "GUI/Controls.h"
 #include "GUI/PitchViews.h"
 #include "Parameters.h"
+#include "GUI/OniriqueWindowSize.h"
 
 namespace ids = onirique::params::id;
 using namespace onirique::ui;
@@ -351,11 +352,14 @@ OniriqueTunerEditor::OniriqueTunerEditor (OniriqueTunerProcessor& p)
     licenseOverlay = std::make_unique<onirique::license::Overlay> ("ONIRIQUE TUNER", p.license);
     addAndMakeVisible (*licenseOverlay);
 
-    const float scale = p.getEditorScale();
+    // taille d'ouverture : la règle commune des plugins ONIRIQUE (GUI/OniriqueWindowSize.h)
+    const int w = onirique::window::openingSize (p.apvts.state, "ONIRIQUE TUNER", { baseWidth, baseHeight },
+                                                 { baseWidth * 7 / 10, baseHeight * 7 / 10 }, { baseWidth * 2, baseHeight * 2 }).x;
     setResizable (true, true);
     getConstrainer()->setFixedAspectRatio ((double) baseWidth / (double) baseHeight);
     setResizeLimits (baseWidth * 7 / 10, baseHeight * 7 / 10, baseWidth * 2, baseHeight * 2);
-    setSize (juce::roundToInt ((float) baseWidth * scale), juce::roundToInt ((float) baseHeight * scale));
+    setSize (w, juce::roundToInt ((float) w * baseHeight / baseWidth));
+    sizeRestored = true;
 
     startTimerHz (30);
 }
@@ -363,6 +367,7 @@ OniriqueTunerEditor::OniriqueTunerEditor (OniriqueTunerProcessor& p)
 OniriqueTunerEditor::~OniriqueTunerEditor()
 {
     stopTimer();
+    onirique::window::rememberOnThisComputer ("ONIRIQUE TUNER", getWidth(), getHeight());
     licenseOverlay.reset();
     content.reset();
     setLookAndFeel (nullptr);
@@ -394,6 +399,7 @@ void OniriqueTunerEditor::resized()
         content->placeHardTune (572);
     }
     tuner.setEditorScale (scale);
+    if (sizeRestored) onirique::window::remember (tuner.apvts.state, getWidth(), getHeight());   // taille gardée avec le projet
 }
 
 void OniriqueTunerEditor::timerCallback()

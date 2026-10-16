@@ -1,10 +1,12 @@
 # Compile ONIRIQUE TUNER pour Mac : VST3 et Audio Unit (Logic Pro, GarageBand), Intel et Apple Silicon.
-# À lancer depuis l'onglet « Actions » du dépôt GitHub, bouton « Run workflow ».
+# À chaque envoi sur main, ou depuis l'onglet « Actions » du dépôt GitHub, bouton « Run workflow ».
 # Le résultat se télécharge en bas de la page de l'exécution, rubrique « Artifacts » : il contient
 # « ONIRIQUE TUNER.vst3.zip » (le .vst3 et le .component), le fichier à envoyer dans ONIRIQUE CENTRAL comme version Mac.
 name: Plugin Mac
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
