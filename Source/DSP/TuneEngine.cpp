@@ -325,6 +325,13 @@ void TuneEngine::setParams (const EngineParams& p) noexcept
     correctorParams.transpose = params.transpose;
     correctorParams.a4 = 440.0 * std::pow (2.0, (double) params.detuneCents / 1200.0);
     correctorParams.noteMask = p.noteMask;
+    correctorParams.created = p.createdVibrato;
+    correctorParams.created.shape = std::clamp (p.createdVibrato.shape, 0, 3);
+    correctorParams.created.rateHz = clean (p.createdVibrato.rateHz, 0.1f, 12.0f, 5.5f);
+    correctorParams.created.depthCents = clean (p.createdVibrato.depthCents, 0.0f, 200.0f, 30.0f);
+    correctorParams.created.delayMs = clean (p.createdVibrato.delayMs, 0.0f, 3000.0f, 150.0f);
+    correctorParams.created.onsetMs = clean (p.createdVibrato.onsetMs, 0.0f, 3000.0f, 250.0f);
+    correctorParams.created.variation = clean (p.createdVibrato.variation, 0.0f, 1.0f, 0.15f);
 
     detector.setTracking (params.tracking);
     vocoder.setVoicing (params.vocoderVoicing, params.harmonyMask);

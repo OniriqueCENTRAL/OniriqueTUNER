@@ -9,9 +9,10 @@ namespace onirique::ui
 namespace
 {
     constexpr float knobTextHeight = 36.0f;
+}
 
-    void drawLed (juce::Graphics& g, juce::Point<float> centre, float diameter, bool lit)
-    {
+void drawLed (juce::Graphics& g, juce::Point<float> centre, float diameter, bool lit)
+{
         const auto dot = juce::Rectangle<float> (diameter, diameter).withCentre (centre);
         if (lit)
         {
@@ -27,7 +28,6 @@ namespace
         }
 
         g.fillEllipse (dot);
-    }
 }
 
 //==============================================================================

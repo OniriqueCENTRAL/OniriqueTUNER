@@ -93,6 +93,20 @@ juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
 
     layout.add (std::make_unique<Float> (juce::ParameterID { id::blend, 1 }, "Vocoder Blend", Range (0.0f, 100.0f, 0.1f), 100.0f, percent));
 
+    // Vibrato créé, comme le « Create Vibrato » d'Auto-Tune : forme, vitesse,
+    // amplitude, délai avant le début, montée, variation d'une note à l'autre.
+    const auto ms = withText ([] (float v) { return v >= 1000.0f ? juce::String (v / 1000.0f, 2) + " s" : juce::String (juce::roundToInt (v)) + " ms"; });
+    layout.add (std::make_unique<Bool> (juce::ParameterID { id::vibOn, 1 }, "Vibrato", false));
+    layout.add (std::make_unique<Choice> (juce::ParameterID { id::vibShape, 1 }, "Vibrato Shape",
+                                          juce::StringArray { "Sine", "Triangle", "Square", "Saw" }, 0));
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::vibRate, 1 }, "Vibrato Rate", Range (0.5f, 10.0f, 0.01f, 0.6f), 5.5f,
+                                         withText ([] (float v) { return juce::String (v, 2) + " Hz"; })));
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::vibDepth, 1 }, "Vibrato Depth", Range (0.0f, 100.0f, 0.1f), 30.0f,
+                                         withText ([] (float v) { return juce::String (juce::roundToInt (v)) + " ct"; })));
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::vibDelay, 1 }, "Vibrato Delay", Range (0.0f, 2000.0f, 1.0f, 0.5f), 150.0f, ms));
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::vibOnset, 1 }, "Vibrato Onset", Range (0.0f, 2000.0f, 1.0f, 0.5f), 250.0f, ms));
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::vibVariation, 1 }, "Vibrato Variation", Range (0.0f, 100.0f, 0.1f), 15.0f, percent));
+
     return layout;
 }
 

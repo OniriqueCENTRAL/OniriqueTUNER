@@ -7,6 +7,9 @@
 namespace onirique::ui
 {
 
+/** LED des pastilles : braise lumineuse allumée, rose pâle éteinte. */
+void drawLed (juce::Graphics&, juce::Point<float> centre, float diameter, bool lit);
+
 //==============================================================================
 /** Potard relié à un paramètre : cadran, libellé, valeur. Double-clic pour
     revenir à la valeur par défaut. */

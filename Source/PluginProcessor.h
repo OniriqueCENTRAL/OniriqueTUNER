@@ -53,6 +53,7 @@ public:
     /** Le vocodeur est-il en marche ? (pour l'affichage) */
     bool isVocoderOn() const noexcept { return vocoder->load() > 0.5f; }
     bool isHardTuneOn() const noexcept { return hardTune->load() > 0.5f; }
+    bool isCreatedVibratoOn() const noexcept { return vibOn->load() > 0.5f; }
 
     /** Taille de l'interface (1 = taille de base), mémorisée avec le projet. */
     float getEditorScale() const noexcept { return editorScale.load(); }
@@ -89,6 +90,13 @@ private:
     std::atomic<float>* vocoder = nullptr;
     std::atomic<float>* voicing = nullptr;
     std::atomic<float>* blend = nullptr;
+    std::atomic<float>* vibOn = nullptr;
+    std::atomic<float>* vibShape = nullptr;
+    std::atomic<float>* vibRate = nullptr;
+    std::atomic<float>* vibDepth = nullptr;
+    std::atomic<float>* vibDelay = nullptr;
+    std::atomic<float>* vibOnset = nullptr;
+    std::atomic<float>* vibVariation = nullptr;
     std::array<std::atomic<float>*, 12> noteToggles {};
     juce::RangedAudioParameter* bypassParam = nullptr;
 

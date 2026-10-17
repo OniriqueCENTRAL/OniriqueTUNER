@@ -31,6 +31,13 @@ OniriqueTunerProcessor::OniriqueTunerProcessor()
     vocoder = apvts.getRawParameterValue (ids::vocoder);
     voicing = apvts.getRawParameterValue (ids::voicing);
     blend = apvts.getRawParameterValue (ids::blend);
+    vibOn = apvts.getRawParameterValue (ids::vibOn);
+    vibShape = apvts.getRawParameterValue (ids::vibShape);
+    vibRate = apvts.getRawParameterValue (ids::vibRate);
+    vibDepth = apvts.getRawParameterValue (ids::vibDepth);
+    vibDelay = apvts.getRawParameterValue (ids::vibDelay);
+    vibOnset = apvts.getRawParameterValue (ids::vibOnset);
+    vibVariation = apvts.getRawParameterValue (ids::vibVariation);
     bypassParam = apvts.getParameter (ids::bypass);
 
     for (int note = 0; note < 12; ++note)
@@ -68,8 +75,10 @@ void OniriqueTunerProcessor::prepareToPlay (double sampleRate, int)
     engine.prepare (sampleRate);
     setLatencySamples (engine.getLatencySamples());
 
+   #if ! ONIRIQUE_TEST_BUILD
     // Beaucoup de DAW rappellent prepareToPlay juste avant un export : la licence est relue à ce moment-là.
     license.refresh();
+   #endif
 }
 
 void OniriqueTunerProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
@@ -99,9 +108,11 @@ void OniriqueTunerProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                        juce::jlimit (0, buffer.getNumSamples() - 1, e.sampleOffset));
     }
 
+   #if ! ONIRIQUE_TEST_BUILD   // version d'essai locale (ONIRIQUE TUNER TEST) : pas de licence
     // Mode démo (plugin non acheté, ou essai gratuit) : voir License/DemoNoise.h.
     if (license.process (buffer, getSampleRate(), isNonRealtime()))
         midi.clear();
+   #endif
 }
 
 //==============================================================================
@@ -129,6 +140,13 @@ onirique::tune::EngineParams OniriqueTunerProcessor::readParams() const noexcept
     p.flex = flex->load() * 0.01f;
     p.humanize = humanize->load() * 0.01f;
     p.vibrato = vibrato->load() / 12.0f;
+    p.createdVibrato.on = vibOn->load() > 0.5f;
+    p.createdVibrato.shape = juce::roundToInt (vibShape->load());
+    p.createdVibrato.rateHz = vibRate->load();
+    p.createdVibrato.depthCents = vibDepth->load();
+    p.createdVibrato.delayMs = vibDelay->load();
+    p.createdVibrato.onsetMs = vibOnset->load();
+    p.createdVibrato.variation = vibVariation->load() * 0.01f;
     p.formant = formant->load() > 0.5f;
     p.throat = throat->load() * 0.01f;
     p.transpose = transpose->load();

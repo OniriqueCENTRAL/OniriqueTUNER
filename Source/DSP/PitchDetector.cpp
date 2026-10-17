@@ -37,6 +37,9 @@ namespace
     constexpr float blendClean = 0.5f, blendNoisy = 0.12f;
     constexpr float noisyDip = 0.20f, cleanDip = 0.04f;
 
+    // Voix qui a bougé : creux de l'instant au moins deux fois plus net que celui suivi.
+    constexpr float movedRatio = 0.5f;
+
     int orderFor (int length) noexcept
     {
         int order = 1;
@@ -232,6 +235,27 @@ PitchDetector::Result PitchDetector::analyse (const float* ring, int mask, std::
                 trackedValue = evidence[(size_t) tau];
                 tracked = tau;
             }
+        }
+
+        // Sur un glissé rapide, la courbe accumulée garde la note d'avant et son
+        // creux se comble, alors que la mesure de l'instant en trouve un net un
+        // peu plus loin : la voix a bougé, on repart de l'instant.
+        int moved = -1;
+        float movedValue = trackedValue * movedRatio;
+        for (int tau = lo; tau <= hi; ++tau)
+        {
+            if (cmnd[(size_t) tau] < movedValue && cmnd[(size_t) tau] <= cmnd[(size_t) tau - 1] && cmnd[(size_t) tau] <= cmnd[(size_t) tau + 1])
+            {
+                movedValue = cmnd[(size_t) tau];
+                moved = tau;
+            }
+        }
+
+        if (moved >= 0 && movedValue < stayLimit)
+        {
+            std::copy (cmnd.begin(), cmnd.begin() + tauMax + 1, evidence.begin());
+            tracked = moved;
+            trackedValue = movedValue;
         }
 
         bool keep = false;

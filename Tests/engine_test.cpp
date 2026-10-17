@@ -674,16 +674,21 @@ void testVibrato (double fs)
 
     for (bool hq : { false, true })
     {
-        // Accordage naturel : la note est recentrée, le vibrato reste celui du chanteur.
+        // Accordage classique, comme Auto-Tune : la note est toujours recentrée ;
+        // à Retune 0 le vibrato est effacé, plus Retune est lent plus il passe.
         for (float retune : { 0.0f, 20.0f, 400.0f })
         {
             const auto stats = runWith (hq, false, retune, 0.0f);
-            std::printf ("    %s naturel Retune %3.0f ms          moyenne %+6.2f cents, ecart-type %5.2f cents\n", hq ? "HQ  " : "LIVE",
+            std::printf ("    %s classique Retune %3.0f ms        moyenne %+6.2f cents, ecart-type %5.2f cents\n", hq ? "HQ  " : "LIVE",
                          (double) retune, stats.meanCents, stats.spreadCents);
 
-            check (std::abs (stats.spreadCents - inputStats.spreadCents) < 0.2 * inputStats.spreadCents, "l'accordage naturel doit garder le vibrato");
-            if (retune < 100.0f)
-                check (std::abs (stats.meanCents) < 3.0, "l'accordage naturel doit recentrer la note");
+            check (std::abs (stats.meanCents) < 3.0, "l'accordage doit recentrer la note");
+            if (retune == 0.0f)
+                check (stats.spreadCents < (hq ? 2.0 : 4.0), "Retune 0 doit effacer le vibrato");
+            if (retune == 20.0f)
+                check (stats.spreadCents < 0.6 * inputStats.spreadCents, "Retune 20 doit nettement resserrer le vibrato");
+            if (retune == 400.0f)
+                check (stats.spreadCents > 0.8 * inputStats.spreadCents, "Retune 400 doit laisser passer le vibrato");
         }
 
         // Hard Tune : la note est plate. (Sur une voix fausse dont le vibrato
@@ -700,13 +705,222 @@ void testVibrato (double fs)
         check (hard.spreadCents < (hq ? 1.0 : 3.5) && std::abs (hard.meanCents) < 1.0, "Hard Tune doit aplatir la note");
     }
 
-    // Natural Vibrato : -12 efface le vibrato, +12 l'accentue.
-    const auto less = runWith (true, false, 20.0f, -1.0f);
-    const auto more = runWith (true, false, 20.0f, 1.0f);
+    // Natural Vibrato (Retune lent, qui laisse passer le vibrato) : -12 l'efface, +12 l'accentue.
+    const auto less = runWith (true, false, 400.0f, -1.0f);
+    const auto more = runWith (true, false, 400.0f, 1.0f);
     std::printf ("    HQ naturel, Natural Vibrato -12        moyenne %+6.2f cents, ecart-type %5.2f cents\n", less.meanCents, less.spreadCents);
     std::printf ("    HQ naturel, Natural Vibrato +12        moyenne %+6.2f cents, ecart-type %5.2f cents\n", more.meanCents, more.spreadCents);
     check (less.spreadCents < 0.35 * inputStats.spreadCents, "Natural Vibrato -12 doit effacer le vibrato");
     check (more.spreadCents > 1.5 * inputStats.spreadCents, "Natural Vibrato +12 doit accentuer le vibrato");
+}
+
+/** Hard Tune, comme Auto-Tune à Retune 0 : une voix qui glisse d'une octave sort
+    en marches nettes, chaque demi-ton plat, sans glissé entre deux. */
+void testHardSteps (double fs)
+{
+    std::printf ("\n[4b] Hard Tune : glissade la3 -> la4 en 2 s, gamme chromatique\n");
+
+    const VoiceModel model (fs);
+    const double seconds = 2.4;
+    const auto midiAt = [] (double t) { return 57.0 + 12.0 * std::clamp ((t - 0.2) / 2.0, 0.0, 1.0); };
+    const auto voice = synthVoice (model, seconds, [&] (double t) { return 440.0 * std::pow (2.0, (midiAt (t) - 69.0) / 12.0); });
+
+    for (int pass = 0; pass < 4; ++pass)
+    {
+        const bool hq = (pass & 1) != 0, hard = pass < 2;
+        EngineParams p;
+        p.hq = hq;
+        p.hardTune = hard;
+        p.retuneMs = hard ? 20.0f : 60.0f;
+        const auto out = run (voice, fs, p);
+
+        // Fenêtres de 15 ms : sur une marche, la sortie est à moins de 5 cents d'un demi-ton.
+        int onStep = 0, total = 0;
+        const int window = (int) (0.015 * fs), hop = (int) (0.005 * fs);
+        for (int start = (int) (0.3 * fs); start + window < (int) (2.1 * fs); start += hop)
+        {
+            const double guess = 440.0 * std::pow (2.0, (midiAt (((double) start + 0.5 * window) / fs) - 69.0) / 12.0);
+            const double f = measureF0 (out.data() + start, window, fs, guess);
+            if (f <= 0.0)
+                continue;
+            const double midi = 69.0 + 12.0 * std::log2 (f / 440.0);
+            if (std::abs (midi - std::round (midi)) * 100.0 < 5.0)
+                ++onStep;
+            ++total;
+        }
+
+        std::printf ("    %s %-22s %d / %d fenetres sur un demi-ton exact\n", hq ? "HQ  " : "LIVE", hard ? "Hard Tune" : "classique Retune 60 ms", onStep, total);
+        if (hard)
+            check (onStep >= total * 85 / 100, "Hard Tune doit sortir en marches nettes");
+        else
+            check (onStep < total * 70 / 100, "l'accordage classique lent doit glisser d'une note a l'autre");
+    }
+}
+
+/** Transitions, accordage naturel : quand la voix passe d'une note à l'autre en
+    glissant, la sortie doit glisser comme elle, au même moment et avec la même
+    forme, simplement recalée sur la gamme ; pas tenir l'ancienne note puis
+    sauter sur la nouvelle (ce qui sonne robot). */
+void testTransitions (double fs)
+{
+    std::printf ("\n[4d] Transitions entre notes, accordage naturel, Retune 20 ms\n");
+    std::printf ("    passage                                   mode   ecart au glisse ideal   retard   vitesse max   note d'arrivee\n");
+
+    const VoiceModel model (fs);
+
+    struct Move
+    {
+        const char* name;
+        double from, to, glideMs, overshoot, vibrato;
+    };
+
+    const Move moves[] = {
+        { "la3+20c -> do4-15c, glisse de 90 ms     ", 57.20, 59.85, 90.0, 0.0, 0.0 },
+        { "do4-10c -> la3+25c, glisse de 70 ms     ", 59.90, 57.25, 70.0, 0.0, 0.0 },
+        { "la3 -> mi4+10c, saut de 50 ms, depasse  ", 57.05, 64.10, 50.0, 0.35, 0.0 },
+        { "la3+30c -> si3-20c, glisse de 200 ms    ", 57.30, 58.80, 200.0, 0.0, 0.0 },
+        { "la3 -> do4, glisse de 80 ms, vibrato    ", 57.15, 60.10, 80.0, 0.0, 0.25 },
+    };
+
+    const double hold = 0.7;
+    double worstDeviation = 0.0, worstDelay = 0.0;
+
+    for (const auto& m : moves)
+    {
+        const double start = hold, end = hold + m.glideMs / 1000.0;
+        const auto sungAt = [&] (double t)
+        {
+            double midi;
+            if (t < start)
+                midi = m.from;
+            else if (t < end)
+                midi = m.from + (m.to - m.from) * (0.5 - 0.5 * std::cos (pi * (t - start) / (end - start)));
+            else
+                midi = m.to + m.overshoot * std::exp (-(t - end) / 0.03) * std::sin (pi * std::min (1.0, (t - end) / 0.03));
+
+            return midi + m.vibrato * std::sin (2.0 * pi * 5.5 * t);
+        };
+
+        // Ce qu'on attend : la voix elle-même, décalée de la correction de la
+        // première note puis de celle de la seconde, au fil de son glissé.
+        const double fromNote = std::round (m.from), toNote = std::round (m.to);
+        const auto idealAt = [&] (double t)
+        {
+            const double sung = sungAt (t) - m.vibrato * std::sin (2.0 * pi * 5.5 * t);
+            const double progress = std::clamp ((sung - m.from) / (m.to - m.from), 0.0, 1.0);
+            return sungAt (t) + (fromNote - m.from) + progress * ((toNote - m.to) - (fromNote - m.from));
+        };
+
+        const auto voice = synthVoice (model, end + hold, [&] (double t) { return 440.0 * std::pow (2.0, (sungAt (t) - 69.0) / 12.0); });
+
+        for (bool hq : { false, true })
+        {
+            EngineParams p;
+            p.hq = hq;
+            p.retuneMs = 20.0f;
+            const auto out = run (voice, fs, p);
+
+            // Hauteur de sortie toutes les 2,5 ms, sur des fenêtres de 12 ms
+            const int window = (int) (0.012 * fs), hop = (int) (0.0025 * fs);
+            double sumSq = 0.0, maxOut = 0.0, maxIdeal = 0.0, previousOut = 0.0, previousIdeal = 0.0;
+            double outCross = -1.0, idealCross = -1.0, landed = 0.0;
+            int count = 0, landedCount = 0;
+            const double midpoint = 0.5 * (fromNote + toNote);
+
+            for (int s = (int) ((start - 0.05) * fs); s + window < (int) ((end + 0.5) * fs); s += hop)
+            {
+                const double t = ((double) s + 0.5 * window) / fs;
+                const double ideal = idealAt (t);
+                const double f = measureF0 (out.data() + s, window, fs, 440.0 * std::pow (2.0, (ideal - 69.0) / 12.0));
+                if (f <= 0.0)
+                    continue;
+
+                const double got = 69.0 + 12.0 * std::log2 (f / 440.0);
+
+                if (t < end + 0.12)
+                {
+                    sumSq += (got - ideal) * (got - ideal);
+                    ++count;
+                }
+                else if (t > end + 0.15)
+                {
+                    landed += got - toNote - m.vibrato * std::sin (2.0 * pi * 5.5 * t);
+                    ++landedCount;
+                }
+
+                if (count > 1)
+                {
+                    maxOut = std::max (maxOut, std::abs (got - previousOut) / 0.0025);
+                    maxIdeal = std::max (maxIdeal, std::abs (ideal - previousIdeal) / 0.0025);
+                }
+
+                if (outCross < 0.0 && (got - midpoint) * (toNote - fromNote) > 0.0)
+                    outCross = t;
+                if (idealCross < 0.0 && (ideal - midpoint) * (toNote - fromNote) > 0.0)
+                    idealCross = t;
+
+                previousOut = got;
+                previousIdeal = ideal;
+            }
+
+            const double deviation = 100.0 * std::sqrt (sumSq / std::max (1, count));
+            const double delay = 1000.0 * (outCross - idealCross);
+            std::printf ("    %s %s       %5.1f cents         %+5.1f ms     x%4.1f        %+5.1f cents\n", m.name, hq ? "HQ  " : "LIVE",
+                         deviation, delay, maxOut / std::max (1.0e-9, maxIdeal), 100.0 * landed / std::max (1, landedCount));
+
+            // En temps réel, la note d'arrivée n'est connue qu'une fois que la
+            // voix freine : sur un glissé lent, le passage se fait dans sa
+            // seconde moitié. Le retard se juge donc à la durée du glissé.
+            worstDeviation = std::max (worstDeviation, deviation);
+            worstDelay = std::max (worstDelay, std::abs (delay) / std::max (1.0, 0.2 * m.glideMs / 12.0));
+            check (std::abs (100.0 * landed / std::max (1, landedCount)) < 6.0, "la note d'arrivee doit etre juste");
+        }
+    }
+
+    // Avant le suivi des glissés (1.1.4) : 35 a 70 cents d'ecart, 15 a 52 ms de retard.
+    std::printf ("    pire ecart au glisse ideal %.1f cents, pire retard %.1f ms (ramene a un glisse de 60 ms)\n", worstDeviation, worstDelay);
+    check (worstDeviation < 32.0, "la sortie doit suivre le glisse de la voix, sans tenir puis sauter");
+    check (worstDelay < 12.0, "la transition doit arriver au moment ou la voix la chante (a 20 % du glisse pres)");
+}
+
+/** Vibrato créé : une note tenue bien juste reçoit le vibrato choisi, après son délai. */
+void testCreatedVibrato (double fs)
+{
+    std::printf ("\n[4c] Vibrato cree : la3 juste et sans vibrato, 5,5 Hz, +/- 40 cents\n");
+
+    const VoiceModel model (fs);
+    const double centre = 220.0;
+    const auto voice = synthVoice (model, 3.5, [centre] (double) { return centre; });
+    const auto flat = [centre] (double) { return centre; };
+
+    for (bool hard : { false, true })
+    {
+        for (bool delayed : { false, true })
+        {
+            EngineParams p;
+            p.hq = true;
+            p.hardTune = hard;
+            p.retuneMs = 20.0f;
+            p.createdVibrato.on = true;
+            p.createdVibrato.rateHz = 5.5f;
+            p.createdVibrato.depthCents = 40.0f;
+            p.createdVibrato.delayMs = delayed ? 1500.0f : 0.0f;
+            p.createdVibrato.onsetMs = 0.0f;
+            p.createdVibrato.variation = 0.0f;
+            const auto out = run (voice, fs, p);
+
+            const auto early = pitchStats (out, fs, (int) (0.3 * fs), (int) (1.2 * fs), flat);
+            const auto late = pitchStats (out, fs, (int) (2.0 * fs), (int) (3.3 * fs), flat);
+            std::printf ("    %-9s delai %4d ms   debut : ecart-type %5.2f cents   fin : moyenne %+6.2f, ecart-type %5.2f cents\n",
+                         hard ? "Hard Tune" : "classique", delayed ? 1500 : 0, early.spreadCents, late.meanCents, late.spreadCents);
+
+            // Sinus de +/- 40 cents : ecart-type 28 cents.
+            check (late.spreadCents > 22.0 && late.spreadCents < 34.0, "le vibrato cree doit avoir l'amplitude choisie");
+            check (std::abs (late.meanCents) < 4.0, "le vibrato cree doit rester centre sur la note");
+            if (delayed)
+                check (early.spreadCents < 3.0, "avant son delai, le vibrato cree ne doit pas commencer");
+        }
+    }
 }
 
 void testMelody (double fs)
@@ -1825,9 +2039,14 @@ int main (int argc, char** argv)
             testHardTune (fs);
             testScaleAndTranspose (fs);
             testVibrato (fs);
+            testHardSteps (fs);
+            testCreatedVibrato (fs);
             testMelody (fs);
             testSampleRates();
         }
+
+        if (wanted ("justesse") || wanted ("transitions"))
+            testTransitions (fs);
 
         if (wanted ("charge"))
             testCpu (fs);

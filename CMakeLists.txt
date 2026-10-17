@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(OniriqueTuner VERSION 1.1.4)
+project(OniriqueTuner VERSION 1.2.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -37,12 +37,24 @@ else()
     set(ONIRIQUE_FORMATS VST3)
 endif()
 
+# Version d'essai locale, pour régler le son dans un DAW avant de publier : un autre nom et un autre
+# identifiant (elle s'installe à côté du vrai TUNER sans le remplacer), et sans licence.
+#   cmake -B build-test -DONIRIQUE_TEST_BUILD=ON
+option(ONIRIQUE_TEST_BUILD "Version d'essai locale : ONIRIQUE TUNER TEST, sans licence" OFF)
+if(ONIRIQUE_TEST_BUILD)
+    set(ONIRIQUE_TUNER_NAME "ONIRIQUE TUNER TEST")
+    set(ONIRIQUE_TUNER_CODE Otnt)
+else()
+    set(ONIRIQUE_TUNER_NAME "ONIRIQUE TUNER")
+    set(ONIRIQUE_TUNER_CODE Otn1)
+endif()
+
 juce_add_plugin(OniriqueTuner
     COMPANY_NAME                "Onirique"
     PLUGIN_MANUFACTURER_CODE    Onrq
-    PLUGIN_CODE                 Otn1
+    PLUGIN_CODE                 ${ONIRIQUE_TUNER_CODE}
     FORMATS                     ${ONIRIQUE_FORMATS}
-    PRODUCT_NAME                "ONIRIQUE TUNER"
+    PRODUCT_NAME                "${ONIRIQUE_TUNER_NAME}"
     DESCRIPTION                 "Correction de hauteur pour la voix"
     IS_SYNTH                    FALSE
     NEEDS_MIDI_INPUT            FALSE
@@ -89,7 +101,8 @@ target_compile_definitions(OniriqueTuner PUBLIC
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
     JUCE_DISPLAY_SPLASH_SCREEN=0
-    JUCE_STRICT_REFCOUNTEDPOINTER=1)
+    JUCE_STRICT_REFCOUNTEDPOINTER=1
+    ONIRIQUE_TEST_BUILD=$<BOOL:${ONIRIQUE_TEST_BUILD}>)
 
 if(MSVC)
     target_compile_options(OniriqueTuner PRIVATE /utf-8)

@@ -24,6 +24,7 @@ branches.
 | **Retune Speed** | Accordage naturel : vitesse à laquelle la note est ramenée (0 ms : serré, la voix tombe juste tout de suite ; 20 à 60 ms : naturel ; au-delà : très discret). Avec HARD TUNE : netteté des sauts entre notes (0 ms = sauts francs). |
 | **Flex-Tune** | Ne corrige que lorsque la voix s'approche d'une note ; laisse libres les glissés et les effets volontaires. Sans effet avec HARD TUNE. |
 | **Humanize** | Relâche la correction sur les notes tenues, sans toucher aux notes brèves. Sans effet avec HARD TUNE. |
+| **VIBRATO** (en-tête) | Ajoute un vibrato à chaque note, comme le « Create Vibrato » d'Auto-Tune : forme (sinus, triangle, carré, dent de scie), vitesse, amplitude, délai avant le début, montée, variation d'une note à l'autre. Marche aussi avec HARD TUNE. |
 | **Natural Vibrato** | Atténue (vers la gauche, -12 = note plate) ou accentue (vers la droite) le vibrato du chanteur. Sans effet avec HARD TUNE. |
 | **Formant** | Éteint : son classique, le timbre suit la note. Allumé : le timbre est préservé, utile pour les grosses transpositions. |
 | **Throat** | Longueur de gorge (avec Formant) : plus long = voix plus sombre, plus court = plus claire. |

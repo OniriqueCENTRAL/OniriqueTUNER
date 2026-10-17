@@ -23,6 +23,7 @@ struct EngineParams
     float flex = 0.0f;                   // 0..1
     float humanize = 0.0f;               // 0..1
     float vibrato = 0.0f;                // -1..1
+    VibratoParams createdVibrato;        // vibrato ajouté (bouton VIBRATO)
     bool formant = false;                // true = formants préservés, false = son classique
     float throat = 1.0f;                 // longueur de gorge relative (1 = neutre)
     float transpose = 0.0f;              // demi-tons

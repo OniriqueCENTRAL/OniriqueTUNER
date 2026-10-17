@@ -26,6 +26,15 @@ namespace id
     inline constexpr const char* vocoder   = "vocoder";     // vocodeur piloté par la voix
     inline constexpr const char* voicing   = "vocVoicing";  // ce que joue son synthé
     inline constexpr const char* blend     = "vocBlend";    // voix accordée <-> vocodeur
+
+    // Vibrato créé (bouton VIBRATO de l'en-tête et son menu)
+    inline constexpr const char* vibOn        = "vibOn";
+    inline constexpr const char* vibShape     = "vibShape";
+    inline constexpr const char* vibRate      = "vibRate";
+    inline constexpr const char* vibDepth     = "vibDepth";
+    inline constexpr const char* vibDelay     = "vibDelay";
+    inline constexpr const char* vibOnset     = "vibOnset";
+    inline constexpr const char* vibVariation = "vibVariation";
 }
 
 /** Identifiant de l'interrupteur d'une note (0 = do ... 11 = si). Il inverse

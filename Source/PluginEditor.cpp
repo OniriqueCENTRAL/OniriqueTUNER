@@ -64,6 +64,132 @@ namespace
         Fonts fonts;
         juce::String text;
     };
+
+    /** VIBRATO, dans l'en-tête à côté de HARD TUNE : la LED dit si le vibrato
+        créé est en marche, le clic déroule son menu de réglages. */
+    class VibratoButton final : public juce::Button
+    {
+    public:
+        explicit VibratoButton (std::atomic<float>* onValue) : juce::Button ("VIBRATO"), on (onValue)
+        {
+            setMouseCursor (juce::MouseCursor::PointingHandCursor);
+            setTooltip ("Vibrato : ajoute un vibrato a la voix accordee, note par note. Clic pour ses reglages.");
+        }
+
+        void setCompact (bool shouldBeCompact) { if (shouldBeCompact != compact) { compact = shouldBeCompact; repaint(); } }
+        void setOpen (bool isOpen) { if (isOpen != open) { open = isOpen; repaint(); } }
+        void refresh() { const bool lit = on->load() > 0.5f; if (lit != shownLit) { shownLit = lit; repaint(); } }
+
+        void paintButton (juce::Graphics& g, bool highlighted, bool) override
+        {
+            const bool lit = on->load() > 0.5f;
+            const auto bounds = getLocalBounds().toFloat().reduced (0.5f);
+            const float radius = bounds.getHeight() * 0.5f;
+
+            g.setColour (juce::Colours::black.withAlpha (open ? 0.45f : 0.3f));
+            g.fillRoundedRectangle (bounds, radius);
+            g.setColour (lit ? palette::ember.withAlpha (0.6f) : ((highlighted || open) ? palette::rose.withAlpha (0.3f) : palette::line()));
+            g.drawRoundedRectangle (bounds, radius, 1.0f);
+
+            const auto font = fonts->monoBoldFont (11.5f, 0.08f);
+            const juce::String caption = compact ? "VIB" : "VIBRATO";
+            const float textWidth = juce::GlyphArrangement::getStringWidth (font, caption);
+            const float ledSize = 8.0f, gap = 7.0f, chevron = 7.0f;
+            const float startX = bounds.getCentreX() - 0.5f * (ledSize + gap + textWidth + gap + chevron);
+
+            drawLed (g, { startX + ledSize * 0.5f, bounds.getCentreY() }, ledSize, lit);
+
+            const auto colour = (lit || highlighted || open) ? palette::mist : palette::haze;
+            g.setColour (colour);
+            g.setFont (font);
+            g.drawText (caption, juce::Rectangle<float> (startX + ledSize + gap, bounds.getY(), textWidth + 4.0f, bounds.getHeight()),
+                        juce::Justification::centredLeft, false);
+
+            // petite flèche : vers le bas, vers le haut quand le menu est ouvert
+            const float cx = startX + ledSize + gap + textWidth + gap + chevron * 0.5f, cy = bounds.getCentreY();
+            const float d = open ? -1.0f : 1.0f;
+            juce::Path arrow;
+            arrow.startNewSubPath (cx - 3.5f, cy - 1.8f * d);
+            arrow.lineTo (cx, cy + 1.8f * d);
+            arrow.lineTo (cx + 3.5f, cy - 1.8f * d);
+            g.strokePath (arrow, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
+
+    private:
+        Fonts fonts;
+        std::atomic<float>* on;
+        bool compact = false, open = false, shownLit = false;
+    };
+
+    /** Le menu déroulé par VIBRATO : en marche / arrêt, forme, puis vitesse,
+        amplitude, délai avant le début du vibrato, montée et variation d'une
+        note à l'autre (le « Create Vibrato » d'Auto-Tune). */
+    class VibratoPanel final : public juce::Component
+    {
+    public:
+        explicit VibratoPanel (juce::AudioProcessorValueTreeState& state)
+            : power (*state.getParameter (ids::vibOn), "ON", "OFF"),
+              shape (*state.getParameter (ids::vibShape), { "SINE", "TRIANGLE", "SQUARE", "SAW" }),
+              rate (state, ids::vibRate, "Rate"),
+              depth (state, ids::vibDepth, "Depth"),
+              delay (state, ids::vibDelay, "Delay"),
+              onset (state, ids::vibOnset, "Onset"),
+              variation (state, ids::vibVariation, "Variation")
+        {
+            for (auto* child : std::initializer_list<juce::Component*> { &power, &shape, &rate, &depth, &delay, &onset, &variation })
+                addAndMakeVisible (child);
+            setSize (452, 222);
+        }
+
+        void paint (juce::Graphics& g) override
+        {
+            const auto card = getLocalBounds().toFloat().reduced (6.0f);
+            juce::Path outline;
+            outline.addRoundedRectangle (card, 16.0f);
+            juce::DropShadow (juce::Colours::black.withAlpha (0.7f), 16, { 0, 6 }).drawForPath (g, outline);
+
+            juce::ColourGradient fill (palette::bloodDeep, 0.0f, card.getY(), palette::night, 0.0f, card.getBottom(), false);
+            g.setGradientFill (fill);
+            g.fillPath (outline);
+            g.setColour (palette::ember.withAlpha (0.35f));
+            g.strokePath (outline, juce::PathStrokeType (1.0f));
+
+            drawEyebrow (g, *fonts, "Vibrato", card.getX() + 18.0f, card.getY() + 24.0f);
+            g.setColour (palette::haze);
+            g.setFont (fonts->monoFont (9.5f, 0.06f));
+            g.drawText ("ADDED TO THE TUNED VOICE, NOTE BY NOTE", juce::Rectangle<float> (card.getX() + 18.0f, card.getY() + 30.0f, 300.0f, 16.0f),
+                        juce::Justification::centredLeft, false);
+        }
+
+        void resized() override
+        {
+            const auto card = getLocalBounds().reduced (6);
+            power.setBounds (card.getRight() - 18 - 74, card.getY() + 14, 74, 28);
+            shape.setBounds (card.getX() + 16, card.getY() + 56, card.getWidth() - 32, 32);
+
+            const int top = card.getY() + 100, width = (card.getWidth() - 24) / 5;
+            int x = card.getX() + 12;
+            for (auto* knob : { &rate, &depth, &delay, &onset, &variation })
+            {
+                knob->setBounds (x, top, width, card.getBottom() - top - 6);
+                x += width;
+            }
+        }
+
+    private:
+        Fonts fonts;
+        LedButton power;
+        ChoiceSwitch shape;
+        Knob rate, depth, delay, onset, variation;
+    };
+
+    /** Couvre l'interface quand le menu VIBRATO est ouvert : un clic à côté le referme. */
+    class ClickCatcher final : public juce::Component
+    {
+    public:
+        std::function<void()> onClick;
+        void mouseDown (const juce::MouseEvent&) override { if (onClick) onClick(); }
+    };
 }
 
 //==============================================================================
@@ -87,7 +213,9 @@ public:
           flex (p.apvts, ids::flex, "Flex-Tune"),
           humanize (p.apvts, ids::humanize, "Humanize"),
           vibrato (p.apvts, ids::vibrato, "Natural Vibrato", true),
-          mix (p.apvts, ids::mix, "Mix")
+          mix (p.apvts, ids::mix, "Mix"),
+          vibratoButton (p.apvts.getRawParameterValue (ids::vibOn)),
+          vibratoPanel (p.apvts)
     {
         sigil = juce::ImageCache::getFromMemory (BinaryData::sigil_png, BinaryData::sigil_pngSize);
 
@@ -110,6 +238,16 @@ public:
                                                                       &notes, &formantButton, &throat, &transpose, &detune, &vocoderButton,
                                                                       &voicingBox, &blend, &tracking, &retune, &flex, &humanize, &vibrato, &mix })
             addAndMakeVisible (child);
+
+        addAndMakeVisible (vibratoButton);
+        addChildComponent (catcher);
+        addChildComponent (vibratoPanel);
+        vibratoButton.onClick = [this] { showVibrato (! vibratoPanel.isVisible()); };
+        catcher.onClick = [this] { showVibrato (false); };
+
+        // Fin du nom ONIRIQUE Tuner dans l'en-tête : les boutons ne vont pas plus à gauche.
+        brandRight = 84.0f + juce::GlyphArrangement::getStringWidth (fonts->displayFont (18.0f, 0.16f), "ONIRIQUE") + 14.0f
+                   + juce::GlyphArrangement::getStringWidth (fonts->dreamFont (38.0f), "Tuner");
 
         formant = p.apvts.getRawParameterValue (ids::formant);
         setSize (baseWidth, baseHeight);
@@ -142,12 +280,15 @@ public:
             throat.setAlpha (preserve ? 1.0f : 0.4f);
         }
 
-        // Hard Tune impose une note plate : Flex-Tune, Humanize et Natural
-        // Vibrato n'ont plus rien à régler.
+        vibratoButton.refresh();
+
+        // Hard Tune impose la note, plate, et saute d'une note à l'autre d'un
+        // coup : Retune Speed, Flex-Tune, Humanize et Natural Vibrato n'ont plus
+        // rien à régler (le vibrato créé, lui, s'ajoute toujours).
         const bool natural = ! tuner.isHardTuneOn();
         if (natural != flex.isEnabled())
         {
-            for (auto* knob : { &flex, &humanize, &vibrato })
+            for (auto* knob : { &retune, &flex, &humanize, &vibrato })
             {
                 knob->setEnabled (natural);
                 knob->setAlpha (natural ? 1.0f : 0.4f);
@@ -184,20 +325,54 @@ public:
         g.drawImage (background, getLocalBounds().toFloat());
     }
 
-    /** HARD TUNE se range dans l'en-tête, à gauche de la pastille de licence
-        dont la largeur suit son texte. */
+    /** HARD TUNE puis VIBRATO se rangent dans l'en-tête, à gauche de la pastille
+        de licence dont la largeur suit son texte ; VIBRATO se raccourcit s'il
+        manque de place devant le nom. */
     void placeHardTune (int right)
     {
-        hardTuneButton.setBounds (right - 124, 18, 124, 30);
+        hardTuneButton.setBounds (right - 112, 18, 112, 30);
+
+        int width = 108;
+        int x = right - 112 - 8 - width;
+        const bool compact = (float) x < brandRight + 12.0f;
+        if (compact)
+        {
+            width = 76;
+            x = right - 112 - 8 - width;
+        }
+        vibratoButton.setCompact (compact);
+        vibratoButton.setBounds (x, 18, width, 30);
+        if (vibratoPanel.isVisible())
+            placeVibratoPanel();
     }
 
 private:
+    void showVibrato (bool show)
+    {
+        catcher.setBounds (getLocalBounds());
+        catcher.setVisible (show);
+        vibratoPanel.setVisible (show);
+        vibratoButton.setOpen (show);
+        if (show)
+        {
+            placeVibratoPanel();
+            catcher.toFront (false);
+            vibratoPanel.toFront (false);
+        }
+    }
+
+    void placeVibratoPanel()
+    {
+        const int x = juce::jlimit (8, baseWidth - 8 - vibratoPanel.getWidth(), vibratoButton.getX() - 6);
+        vibratoPanel.setTopLeftPosition (x, vibratoButton.getBottom() + 2);
+    }
+
     void layout()
     {
         // En-tête
         power.setBounds (906, 18, 74, 30);
-        latency.setBounds (750, 18, 146, 30);
-        modeSwitch.setBounds (582, 16, 158, 34);
+        latency.setBounds (768, 18, 128, 30);
+        modeSwitch.setBounds (620, 16, 140, 34);
 
         // Carte SOURCE
         inputBox.setBounds (36, 118, 232, 32);
@@ -337,6 +512,10 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> voicingAttachment;
     Fader blend;
     Knob tracking, retune, flex, humanize, vibrato, mix;
+    VibratoButton vibratoButton;
+    ClickCatcher catcher;
+    VibratoPanel vibratoPanel;
+    float brandRight = 300.0f;
 };
 
 //==============================================================================
@@ -349,8 +528,10 @@ OniriqueTunerEditor::OniriqueTunerEditor (OniriqueTunerProcessor& p)
     content = std::make_unique<Content> (p);
     addAndMakeVisible (*content);
 
+   #if ! ONIRIQUE_TEST_BUILD   // la version d'essai locale n'a pas de licence
     licenseOverlay = std::make_unique<onirique::license::Overlay> ("ONIRIQUE TUNER", p.license);
     addAndMakeVisible (*licenseOverlay);
+   #endif
 
     // taille d'ouverture : la règle commune des plugins ONIRIQUE (GUI/OniriqueWindowSize.h)
     const int w = onirique::window::openingSize (p.apvts.state, "ONIRIQUE TUNER", { baseWidth, baseHeight },
@@ -391,12 +572,12 @@ void OniriqueTunerEditor::resized()
     {
         // Un bouton de l'en-tête, contre LIVE / HQ, à la hauteur de LATENCY et ON ; sa place suit son texte.
         const int width = licenseOverlay->pillWidth();
-        licenseOverlay->fit (getLocalBounds(), scale, { 572 - width, 18, width, 30 });
-        content->placeHardTune (572 - width - 10);
+        licenseOverlay->fit (getLocalBounds(), scale, { 610 - width, 18, width, 30 });
+        content->placeHardTune (610 - width - 10);
     }
     else
     {
-        content->placeHardTune (572);
+        content->placeHardTune (610);
     }
     tuner.setEditorScale (scale);
     if (sizeRestored) onirique::window::remember (tuner.apvts.state, getWidth(), getHeight());   // taille gardée avec le projet
