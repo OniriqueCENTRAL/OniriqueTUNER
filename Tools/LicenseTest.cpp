@@ -153,7 +153,7 @@ int main (int argc, char** argv)
 
         const bool ok = noisySeconds (State::licensed, false) == 0 && noisySeconds (State::licensed, true) == 0
                      && noisySeconds (State::trial, false) == 0 && noisySeconds (State::trial, true) == 60
-                     && noisySeconds (State::unlicensed, false) == 4 && noisySeconds (State::unlicensed, true) == 60;
+                     && noisySeconds (State::unlicensed, false) == 0 && noisySeconds (State::unlicensed, true) == 60;
         std::cout << (ok ? "bruit du mode demo : conforme" : "bruit du mode demo : ECHEC") << std::endl;
         return ok ? 0 : 1;
     }
