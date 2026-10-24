@@ -1,6 +1,7 @@
 #include "PluginEditor.h"
 
 #include "GUI/Controls.h"
+#include "GUI/Instrument.h"
 #include "GUI/PitchViews.h"
 #include "Parameters.h"
 #include "GUI/OniriqueWindowSize.h"
@@ -10,29 +11,7 @@ using namespace onirique::ui;
 
 namespace
 {
-    constexpr float cardRadius = 16.0f;
-
-    const juce::Rectangle<float> sourceCard { 20.0f, 80.0f, 264.0f, 260.0f };
-    const juce::Rectangle<float> timbreCard { 716.0f, 80.0f, 264.0f, 170.0f };
-    const juce::Rectangle<float> vocoderCard { 716.0f, 260.0f, 264.0f, 80.0f };
-    const juce::Rectangle<float> knobCard { 20.0f, 478.0f, 960.0f, 166.0f };
-
-    /** Texte incandescent, comme l'accent "rêve" des titres du site. */
-    void drawDreamText (juce::Graphics& g, const juce::Font& font, const juce::String& text, float x, float baseline)
-    {
-        juce::GlyphArrangement glyphs;
-        glyphs.addLineOfText (font, text, x, baseline);
-        juce::Path path;
-        glyphs.createPath (path);
-
-        juce::DropShadow (palette::ember.withAlpha (0.55f), 26, {}).drawForPath (g, path);
-        juce::DropShadow (juce::Colour (0xffffbec4).withAlpha (0.45f), 12, {}).drawForPath (g, path);
-        juce::DropShadow (juce::Colours::white.withAlpha (0.5f), 4, {}).drawForPath (g, path);
-        g.setColour (palette::mist);
-        g.fillPath (path);
-    }
-
-    /** Petite pastille d'information (latence déclarée). */
+    /** Petit affichage de la latence déclarée. */
     class Chip final : public juce::Component
     {
     public:
@@ -47,17 +26,15 @@ namespace
 
         void paint (juce::Graphics& g) override
         {
-            const auto bounds = getLocalBounds().toFloat().reduced (0.5f);
-            g.setColour (palette::well());
-            g.fillRoundedRectangle (bounds, bounds.getHeight() * 0.5f);
-            g.setColour (palette::line());
-            g.drawRoundedRectangle (bounds, bounds.getHeight() * 0.5f, 1.0f);
-            g.setColour (palette::haze);
-            g.setFont (fonts->monoFont (9.5f, 0.14f));
-            g.drawText ("LATENCY", bounds.withTrimmedLeft (14.0f), juce::Justification::centredLeft, false);
-            g.setColour (palette::bone);
-            g.setFont (fonts->monoFont (11.5f, 0.02f));
-            g.drawText (text, bounds.withTrimmedRight (14.0f), juce::Justification::centredRight, false);
+            const auto bounds = getLocalBounds().toFloat().reduced (2.0f);
+            glassBack (g, bounds, 4.0f);
+            g.setColour (pal::rose.withAlpha (0.4f));
+            g.setFont (fonts->monoFont (8.5f, 0.18f));
+            g.drawText ("LATENCY", bounds.withTrimmedLeft (10.0f), juce::Justification::centredLeft, false);
+            g.setColour (pal::ember.brighter (0.15f));
+            g.setFont (fonts->monoBoldFont (12.0f, 0.02f));
+            g.drawText (text, bounds.withTrimmedRight (10.0f), juce::Justification::centredRight, false);
+            glassFront (g, bounds, 4.0f);
         }
 
     private:
@@ -65,8 +42,8 @@ namespace
         juce::String text;
     };
 
-    /** VIBRATO, dans l'en-tête à côté de HARD TUNE : la LED dit si le vibrato
-        créé est en marche, le clic déroule son menu de réglages. */
+    /** VIBRATO, dans l'en-tête à côté de HARD TUNE : le témoin dit si le vibrato créé est en marche, le clic
+        déroule son panneau de réglages. */
     class VibratoButton final : public juce::Button
     {
     public:
@@ -80,38 +57,30 @@ namespace
         void setOpen (bool isOpen) { if (isOpen != open) { open = isOpen; repaint(); } }
         void refresh() { const bool lit = on->load() > 0.5f; if (lit != shownLit) { shownLit = lit; repaint(); } }
 
-        void paintButton (juce::Graphics& g, bool highlighted, bool) override
+        void paintButton (juce::Graphics& g, bool highlighted, bool down) override
         {
             const bool lit = on->load() > 0.5f;
-            const auto bounds = getLocalBounds().toFloat().reduced (0.5f);
-            const float radius = bounds.getHeight() * 0.5f;
+            const auto key = getLocalBounds().toFloat().reduced (2.0f);
+            keyCap (g, key, down || open, highlighted);
 
-            g.setColour (juce::Colours::black.withAlpha (open ? 0.45f : 0.3f));
-            g.fillRoundedRectangle (bounds, radius);
-            g.setColour (lit ? palette::ember.withAlpha (0.6f) : ((highlighted || open) ? palette::rose.withAlpha (0.3f) : palette::line()));
-            g.drawRoundedRectangle (bounds, radius, 1.0f);
-
-            const auto font = fonts->monoBoldFont (11.5f, 0.08f);
+            const auto font = fonts->bodyFont (10.5f, 0.2f);
             const juce::String caption = compact ? "VIB" : "VIBRATO";
             const float textWidth = juce::GlyphArrangement::getStringWidth (font, caption);
-            const float ledSize = 8.0f, gap = 7.0f, chevron = 7.0f;
-            const float startX = bounds.getCentreX() - 0.5f * (ledSize + gap + textWidth + gap + chevron);
+            const float startX = key.getCentreX() - 0.5f * (6.0f + 9.0f + textWidth + 8.0f + 7.0f);
 
-            drawLed (g, { startX + ledSize * 0.5f, bounds.getCentreY() }, ledSize, lit);
-
-            const auto colour = (lit || highlighted || open) ? palette::mist : palette::haze;
-            g.setColour (colour);
+            led (g, { startX + 3.0f, key.getCentreY() }, lit ? 1.0f : 0.0f);
+            g.setColour (lit || open ? pal::bone : (highlighted ? pal::ink : pal::inkDim));
             g.setFont (font);
-            g.drawText (caption, juce::Rectangle<float> (startX + ledSize + gap, bounds.getY(), textWidth + 4.0f, bounds.getHeight()),
-                        juce::Justification::centredLeft, false);
+            g.drawText (caption, juce::Rectangle<float> (startX + 15.0f, key.getY(), textWidth + 4.0f, key.getHeight()), juce::Justification::centredLeft, false);
 
-            // petite flèche : vers le bas, vers le haut quand le menu est ouvert
-            const float cx = startX + ledSize + gap + textWidth + gap + chevron * 0.5f, cy = bounds.getCentreY();
+            // petite flèche : vers le bas, vers le haut quand le panneau est ouvert
+            const float cx = startX + 15.0f + textWidth + 8.0f + 3.5f, cy = key.getCentreY();
             const float d = open ? -1.0f : 1.0f;
             juce::Path arrow;
             arrow.startNewSubPath (cx - 3.5f, cy - 1.8f * d);
             arrow.lineTo (cx, cy + 1.8f * d);
             arrow.lineTo (cx + 3.5f, cy - 1.8f * d);
+            g.setColour (pal::ink.withAlpha (0.6f));
             g.strokePath (arrow, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         }
 
@@ -121,9 +90,8 @@ namespace
         bool compact = false, open = false, shownLit = false;
     };
 
-    /** Le menu déroulé par VIBRATO : en marche / arrêt, forme, puis vitesse,
-        amplitude, délai avant le début du vibrato, montée et variation d'une
-        note à l'autre (le « Create Vibrato » d'Auto-Tune). */
+    /** Le panneau déroulé par VIBRATO : en marche / arrêt, forme, puis vitesse, amplitude, délai avant le début
+        du vibrato, montée et variation d'une note à l'autre (le « Create Vibrato » d'Auto-Tune). */
     class VibratoPanel final : public juce::Component
     {
     public:
@@ -138,52 +106,58 @@ namespace
         {
             for (auto* child : std::initializer_list<juce::Component*> { &power, &shape, &rate, &depth, &delay, &onset, &variation })
                 addAndMakeVisible (child);
-            setSize (452, 222);
+            brushed = brushedMetal();
+            setSize (452, 236);
         }
 
         void paint (juce::Graphics& g) override
         {
-            const auto card = getLocalBounds().toFloat().reduced (6.0f);
+            // une plaque de métal posée par-dessus la façade, avec son ombre
+            const auto plate = getLocalBounds().toFloat().reduced (8.0f);
             juce::Path outline;
-            outline.addRoundedRectangle (card, 16.0f);
-            juce::DropShadow (juce::Colours::black.withAlpha (0.7f), 16, { 0, 6 }).drawForPath (g, outline);
-
-            juce::ColourGradient fill (palette::bloodDeep, 0.0f, card.getY(), palette::night, 0.0f, card.getBottom(), false);
-            g.setGradientFill (fill);
-            g.fillPath (outline);
-            g.setColour (palette::ember.withAlpha (0.35f));
+            outline.addRoundedRectangle (plate, 6.0f);
+            juce::DropShadow (juce::Colours::black.withAlpha (0.8f), 18, { 0, 8 }).drawForPath (g, outline);
+            {
+                juce::Graphics::ScopedSaveState save (g);
+                g.reduceClipRegion (outline);
+                drawFaceplate (g, plate, brushed);
+            }
+            g.setColour (juce::Colours::black);
             g.strokePath (outline, juce::PathStrokeType (1.0f));
+            g.setColour (juce::Colours::white.withAlpha (0.08f));
+            g.drawLine (plate.getX() + 6.0f, plate.getY() + 1.0f, plate.getRight() - 6.0f, plate.getY() + 1.0f, 1.0f);
 
-            drawEyebrow (g, *fonts, "Vibrato", card.getX() + 18.0f, card.getY() + 24.0f);
-            g.setColour (palette::haze);
-            g.setFont (fonts->monoFont (9.5f, 0.06f));
-            g.drawText ("ADDED TO THE TUNED VOICE, NOTE BY NOTE", juce::Rectangle<float> (card.getX() + 18.0f, card.getY() + 30.0f, 300.0f, 16.0f),
+            sectionTitle (g, "VIBRATO", plate.getX() + 16.0f, plate.getY() + 22.0f, plate.getRight() - 104.0f);
+            g.setColour (pal::inkDim);
+            g.setFont (fonts->monoFont (9.0f, 0.06f));
+            g.drawText ("ADDED TO THE TUNED VOICE, NOTE BY NOTE", juce::Rectangle<float> (plate.getX() + 16.0f, plate.getY() + 32.0f, 300.0f, 14.0f),
                         juce::Justification::centredLeft, false);
         }
 
         void resized() override
         {
-            const auto card = getLocalBounds().reduced (6);
-            power.setBounds (card.getRight() - 18 - 74, card.getY() + 14, 74, 28);
-            shape.setBounds (card.getX() + 16, card.getY() + 56, card.getWidth() - 32, 32);
+            const auto plate = getLocalBounds().reduced (8);
+            power.setBounds (plate.getRight() - 16 - 76, plate.getY() + 10, 76, 30);
+            shape.setBounds (plate.getX() + 14, plate.getY() + 54, plate.getWidth() - 28, 30);
 
-            const int top = card.getY() + 100, width = (card.getWidth() - 24) / 5;
-            int x = card.getX() + 12;
+            const int top = plate.getY() + 98, width = (plate.getWidth() - 24) / 5;
+            int x = plate.getX() + 12;
             for (auto* knob : { &rate, &depth, &delay, &onset, &variation })
             {
-                knob->setBounds (x, top, width, card.getBottom() - top - 6);
+                knob->setBounds (x, top, width, plate.getBottom() - top - 8);
                 x += width;
             }
         }
 
     private:
         Fonts fonts;
+        juce::Image brushed;
         LedButton power;
         ChoiceSwitch shape;
         Knob rate, depth, delay, onset, variation;
     };
 
-    /** Couvre l'interface quand le menu VIBRATO est ouvert : un clic à côté le referme. */
+    /** Couvre l'interface quand le panneau VIBRATO est ouvert : un clic à côté le referme. */
     class ClickCatcher final : public juce::Component
     {
     public:
@@ -203,7 +177,7 @@ public:
           hardTuneButton (*p.apvts.getParameter (ids::hardTune), "HARD TUNE", "HARD TUNE"),
           notes (p.apvts, [&p] { return p.getNoteMask(); }),
           formantButton (*p.apvts.getParameter (ids::formant), "FORMANT", "FORMANT"),
-          throat (p.apvts, ids::throat, "Throat", true),
+          throat (p.apvts, ids::throat, "Throat"),
           transpose (p.apvts, ids::transpose, "Transpose", true),
           detune (p.apvts, ids::detune, "Detune", true),
           vocoderButton (*p.apvts.getParameter (ids::vocoder), "VOCODER", "VOCODER"),
@@ -218,6 +192,7 @@ public:
           vibratoPanel (p.apvts)
     {
         sigil = juce::ImageCache::getFromMemory (BinaryData::sigil_png, BinaryData::sigil_pngSize);
+        brushed = brushedMetal();
 
         const auto fill = [&p] (juce::ComboBox& box, const char* parameterId)
         {
@@ -245,9 +220,9 @@ public:
         vibratoButton.onClick = [this] { showVibrato (! vibratoPanel.isVisible()); };
         catcher.onClick = [this] { showVibrato (false); };
 
-        // Fin du nom ONIRIQUE Tuner dans l'en-tête : les boutons ne vont pas plus à gauche.
-        brandRight = 84.0f + juce::GlyphArrangement::getStringWidth (fonts->displayFont (18.0f, 0.16f), "ONIRIQUE") + 14.0f
-                   + juce::GlyphArrangement::getStringWidth (fonts->dreamFont (38.0f), "Tuner");
+        // Fin du nom ONIRIQUE Tuner dans l'en-tête : les touches ne vont pas plus à gauche.
+        brandRight = brandX + juce::GlyphArrangement::getStringWidth (fonts->displayFont (15.0f, 0.14f), "ONIRIQUE") + 10.0f
+                   + juce::GlyphArrangement::getStringWidth (fonts->dreamFont (33.0f), "Tuner");
 
         formant = p.apvts.getRawParameterValue (ids::formant);
         setSize (baseWidth, baseHeight);
@@ -309,8 +284,8 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        // Le fond ne change jamais : on le dessine une fois, à la résolution
-        // réelle de l'écran, et on le recolle ensuite.
+        // La façade ne change jamais : on la dessine une fois, à la résolution
+        // réelle de l'écran, et on la recolle ensuite.
         const float scale = g.getInternalContext().getPhysicalPixelScaleFactor();
         if (background.isNull() || std::abs (scale - backgroundScale) > 0.01f)
         {
@@ -330,23 +305,25 @@ public:
         manque de place devant le nom. */
     void placeHardTune (int right)
     {
-        hardTuneButton.setBounds (right - 112, 18, 112, 30);
+        hardTuneButton.setBounds (right - 116, 17, 116, 32);
 
-        int width = 108;
-        int x = right - 112 - 8 - width;
+        int width = 112;
+        int x = right - 116 - 8 - width;
         const bool compact = (float) x < brandRight + 12.0f;
         if (compact)
         {
-            width = 76;
-            x = right - 112 - 8 - width;
+            width = 80;
+            x = right - 116 - 8 - width;
         }
         vibratoButton.setCompact (compact);
-        vibratoButton.setBounds (x, 18, width, 30);
+        vibratoButton.setBounds (x, 17, width, 32);
         if (vibratoPanel.isVisible())
             placeVibratoPanel();
     }
 
 private:
+    static constexpr float brandX = 58.0f;
+
     void showVibrato (bool show)
     {
         catcher.setBounds (getLocalBounds());
@@ -363,137 +340,86 @@ private:
 
     void placeVibratoPanel()
     {
-        const int x = juce::jlimit (8, baseWidth - 8 - vibratoPanel.getWidth(), vibratoButton.getX() - 6);
-        vibratoPanel.setTopLeftPosition (x, vibratoButton.getBottom() + 2);
+        const int x = juce::jlimit (4, baseWidth - 4 - vibratoPanel.getWidth(), vibratoButton.getX() - 8);
+        vibratoPanel.setTopLeftPosition (x, vibratoButton.getBottom() - 2);
     }
 
     void layout()
     {
         // En-tête
-        power.setBounds (906, 18, 74, 30);
-        latency.setBounds (768, 18, 128, 30);
-        modeSwitch.setBounds (620, 16, 140, 34);
+        power.setBounds (906, 17, 76, 32);
+        latency.setBounds (768, 17, 130, 32);
+        modeSwitch.setBounds (620, 17, 140, 32);
 
-        // Carte SOURCE
-        inputBox.setBounds (36, 118, 232, 32);
-        keyBox.setBounds (36, 188, 82, 32);
-        scaleBox.setBounds (126, 188, 142, 32);
-        notes.setBounds (36, 254, 232, 72);
+        // SOURCE
+        inputBox.setBounds (34, 110, 236, 32);
+        keyBox.setBounds (34, 180, 84, 32);
+        scaleBox.setBounds (126, 180, 144, 32);
+        notes.setBounds (34, 250, 236, 84);
 
         // Centre
-        dial.setBounds (362, 70, 276, 276);
+        dial.setBounds (362, 72, 276, 276);
 
-        // Carte TIMBRE
-        formantButton.setBounds (732, 114, 232, 30);
-        throat.setBounds (728, 150, 78, 94);
-        transpose.setBounds (809, 150, 78, 94);
-        detune.setBounds (890, 150, 78, 94);
+        // TIMBRE
+        formantButton.setBounds (730, 106, 236, 32);
+        throat.setBounds (728, 146, 78, 98);
+        transpose.setBounds (809, 146, 78, 98);
+        detune.setBounds (890, 146, 78, 98);
 
-        // Carte VOCODER
-        vocoderButton.setBounds (732, 270, 118, 30);
-        voicingBox.setBounds (858, 270, 106, 30);
-        blend.setBounds (732, 306, 232, 24);
+        // VOCODER
+        vocoderButton.setBounds (730, 268, 120, 32);
+        voicingBox.setBounds (858, 268, 108, 32);
+        blend.setBounds (732, 310, 234, 26);
 
-        trace.setBounds (20, 352, 960, 114);
+        trace.setBounds (18, 356, 964, 112);
 
         // Rangée du bas
-        tracking.setBounds (30, 512, 108, 110);
-        retune.setBounds (166, 488, 150, 148);
-        flex.setBounds (342, 488, 150, 148);
-        humanize.setBounds (508, 488, 150, 148);
-        vibrato.setBounds (684, 488, 150, 148);
-        mix.setBounds (862, 512, 108, 110);
-    }
-
-    void drawCard (juce::Graphics& g, juce::Rectangle<float> card) const
-    {
-        g.setColour (juce::Colours::black.withAlpha (0.3f));
-        g.fillRoundedRectangle (card, cardRadius);
-        g.setColour (palette::line());
-        g.drawRoundedRectangle (card.reduced (0.5f), cardRadius, 1.0f);
+        tracking.setBounds (30, 500, 108, 120);
+        retune.setBounds (166, 482, 150, 156);
+        flex.setBounds (342, 482, 150, 156);
+        humanize.setBounds (508, 482, 150, 156);
+        vibrato.setBounds (684, 482, 150, 156);
+        mix.setBounds (862, 500, 108, 120);
     }
 
     void drawBackground (juce::Graphics& g) const
     {
         const auto bounds = juce::Rectangle<float> ((float) baseWidth, (float) baseHeight);
+        drawFaceplate (g, bounds, brushed);
 
-        // Dégradé sang -> noir
-        juce::ColourGradient night (palette::blood, 0.0f, -80.0f, palette::night, 0.0f, (float) baseHeight * 0.92f, false);
-        night.addColour (0.42, palette::bloodDeep);
-        g.setGradientFill (night);
-        g.fillRect (bounds);
-
-        // Lueur de braise, en haut à droite du centre
-        juce::ColourGradient glow (palette::ember.withAlpha (0.24f), 640.0f, 150.0f,
-                                   palette::ember.withAlpha (0.0f), 640.0f + 470.0f, 150.0f, true);
-        g.setGradientFill (glow);
-        g.fillRect (bounds);
-
-        // Grain argentique
-        {
-            juce::Random random (0x0111c);
-            juce::Image grain (juce::Image::ARGB, 180, 180, true);
-            for (int y = 0; y < 180; ++y)
-                for (int x = 0; x < 180; ++x)
-                {
-                    const auto v = (juce::uint8) random.nextInt (256);
-                    grain.setPixelAt (x, y, juce::Colour (v, v, v, (juce::uint8) 14));
-                }
-
-            g.setTiledImageFill (grain, 0, 0, 1.0f);
-            g.fillRect (bounds);
-        }
-
-        // En-tête
-        g.setColour (juce::Colour (0xff0b0607).withAlpha (0.35f));
-        g.fillRect (0.0f, 0.0f, (float) baseWidth, 66.0f);
-        g.setColour (palette::line());
-        g.fillRect (0.0f, 66.0f, (float) baseWidth, 1.0f);
-
-        if (sigil.isValid())
-        {
-            // Le halo est flou par nature : une petite image suffit. Le sigil
-            // lui-même est redessiné depuis l'original pour rester net.
-            const int logoWidth = 56;
-            const int logoHeight = juce::roundToInt ((float) logoWidth * (float) sigil.getHeight() / (float) sigil.getWidth());
-            const int pad = 12;
-
-            juce::Image padded (juce::Image::ARGB, logoWidth + 2 * pad, logoHeight + 2 * pad, true);
-            {
-                juce::Graphics pg (padded);
-                pg.drawImageAt (sigil.rescaled (logoWidth, logoHeight, juce::Graphics::highResamplingQuality), pad, pad);
-            }
-
-            juce::Graphics::ScopedSaveState state (g);
-            g.addTransform (juce::AffineTransform::translation (8.0f, -4.0f));
-            juce::DropShadow (palette::ember.withAlpha (0.9f), 7, {}).drawForImage (g, padded);
-            g.setOpacity (1.0f);
-            g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
-            g.drawImage (sigil, juce::Rectangle<float> ((float) pad, (float) pad, (float) logoWidth, (float) logoHeight));
-        }
-
-        const auto brandFont = fonts->displayFont (18.0f, 0.16f);
-        g.setColour (palette::mist);
+        // la marque : le sigil, ONIRIQUE sérigraphié, « Tuner » en gothique couleur braise
+        g.setOpacity (1.0f);
+        g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
+        g.drawImage (sigil, juce::Rectangle<float> (18.0f, 17.0f, 30.0f, 30.0f), juce::RectanglePlacement::centred);
+        const auto brandFont = fonts->displayFont (15.0f, 0.14f);
+        g.setColour (pal::ink.withAlpha (0.92f));
         g.setFont (brandFont);
-        g.drawText ("ONIRIQUE", juce::Rectangle<float> (84.0f, 20.0f, 260.0f, 28.0f), juce::Justification::centredLeft, false);
-        drawDreamText (g, fonts->dreamFont (38.0f), "Tuner", 84.0f + juce::GlyphArrangement::getStringWidth (brandFont, "ONIRIQUE") + 14.0f, 46.0f);
+        g.drawText ("ONIRIQUE", juce::Rectangle<float> (brandX, 18.0f, 220.0f, 30.0f), juce::Justification::centredLeft, false);
+        g.setColour (pal::ember);
+        g.setFont (fonts->dreamFont (33.0f));
+        g.drawText ("Tuner", juce::Rectangle<float> (brandX + juce::GlyphArrangement::getStringWidth (brandFont, "ONIRIQUE") + 10.0f, 10.0f, 140.0f, 40.0f),
+                    juce::Justification::centredLeft, false);
 
-        // Cartes et étiquettes
-        drawCard (g, sourceCard);
-        drawCard (g, timbreCard);
-        drawCard (g, vocoderCard);
-        drawCard (g, knobCard);
+        groove (g, 0.0f, 64.0f, bounds.getRight(), 64.0f);
 
-        drawEyebrow (g, *fonts, "Input type", 36.0f, 102.0f);
-        drawEyebrow (g, *fonts, "Key", 36.0f, 172.0f);
-        drawEyebrow (g, *fonts, "Scale", 126.0f, 172.0f);
-        drawEyebrow (g, *fonts, "Notes", 36.0f, 238.0f);
-        drawEyebrow (g, *fonts, "Timbre", 732.0f, 99.0f);
+        // SOURCE, à gauche
+        sectionTitle (g, "INPUT TYPE", 34.0f, 92.0f, 270.0f);
+        sectionTitle (g, "KEY", 34.0f, 164.0f, 118.0f);
+        sectionTitle (g, "SCALE", 126.0f, 164.0f, 270.0f);
+        sectionTitle (g, "NOTES", 34.0f, 234.0f, 270.0f);
+        groove (g, 300.0f, 76.0f, 300.0f, 340.0f);
+
+        // TIMBRE et VOCODER, à droite
+        groove (g, 700.0f, 76.0f, 700.0f, 340.0f);
+        sectionTitle (g, "TIMBRE", 730.0f, 92.0f, 966.0f);
+        sectionTitle (g, "VOCODER", 730.0f, 254.0f, 966.0f);
+
+        groove (g, 18.0f, 476.0f, 982.0f, 476.0f);
     }
 
     OniriqueTunerProcessor& tuner;
     Fonts fonts;
-    juce::Image sigil, background;
+    juce::Image sigil, brushed, background;
     float backgroundScale = 0.0f;
     std::atomic<float>* formant = nullptr;
 
@@ -556,7 +482,7 @@ OniriqueTunerEditor::~OniriqueTunerEditor()
 
 void OniriqueTunerEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (palette::night);
+    g.fillAll (pal::plateBottom);
 }
 
 void OniriqueTunerEditor::resized()

@@ -5,6 +5,8 @@
 //                                     robustesse, voix, vocodeur, pannes
 //   engine_test <dossier> a.wav…   -> traite ces fichiers et écrit le résultat
 //                                     (LIVE, HQ, vocodeur) dans <dossier>
+//   engine_test diagnostic a.wav…  -> HARD TUNE sur ces prises : écart à la note
+//                                     visée, note tenue / voix rapide / changement
 //
 // Les voix de synthèse ont une hauteur et un timbre connus : on peut donc
 // vérifier objectivement la justesse, la propreté (rapport harmoniques/bruit)
@@ -1746,6 +1748,177 @@ void testVocoder (double fs)
 // Gamme mineure des fichiers traités (--minor=Bb), do mineur par défaut.
 std::uint16_t fileScale = pitchClassMask (scales[2].mask, 0);
 
+// On garde les 45 secondes les plus chantées : inutile de traiter du silence.
+void keepMostSung (Audio& audio)
+{
+    const int second = audio.sampleRate;
+    const int seconds = audio.length() / second;
+    std::vector<int> active ((size_t) seconds + 1, 0);
+    for (int sec = 0; sec < seconds; ++sec)
+    {
+        double sum = 0.0;
+        for (int i = 0; i < second; ++i)
+        {
+            double v = 0.0;
+            for (const auto& ch : audio.channels)
+                v += (double) ch[(size_t) (sec * second + i)];
+            sum += v * v;
+        }
+
+        active[(size_t) sec + 1] = active[(size_t) sec] + (std::sqrt (sum / second) > 0.004 ? 1 : 0);
+    }
+
+    const int span = std::min (45, seconds);
+    int bestStart = 0, bestCount = -1;
+    for (int startSec = 0; startSec + span <= seconds; ++startSec)
+    {
+        const int count = active[(size_t) (startSec + span)] - active[(size_t) startSec];
+        if (count > bestCount)
+        {
+            bestCount = count;
+            bestStart = startSec;
+        }
+    }
+
+    for (auto& ch : audio.channels)
+    {
+        ch.erase (ch.begin(), ch.begin() + bestStart * second);
+        ch.resize ((size_t) (span * second));
+    }
+
+    std::printf ("    extrait : %d s a partir de %d s (%d s chantees)\n", span, bestStart, bestCount);
+}
+
+/** Hauteur réécoutée d'un son par un second moteur (indépendant du premier) : les mesures sûres seulement. */
+std::vector<DisplayFrame> listen (const std::vector<float>& mono, int sampleRate)
+{
+    TuneEngine listener;
+    listener.prepare (sampleRate);
+    std::vector<float> copy (mono);
+    std::vector<DisplayFrame> heard;
+    for (size_t pos = 0; pos < copy.size(); pos += 256)
+    {
+        float* channel = copy.data() + pos;
+        listener.process (&channel, 1, (int) std::min<size_t> (256, copy.size() - pos));
+        DisplayFrame frame;
+        while (listener.popDisplayFrame (frame))
+            if (frame.voiced && frame.level > 0.02f && frame.clarity > 0.9f)
+                heard.push_back (frame);
+    }
+    return heard;
+}
+
+/** HARD TUNE sur une vraie prise : où la sortie s'écarte-t-elle de la note visée ? Pendant un changement de
+    note, quand la voix bouge vite, ou sur une note tenue (là, rien ne devrait dépasser quelques cents). */
+void diagnoseFile (const std::string& path)
+{
+    Audio audio;
+    if (! readWav (path, audio))
+    {
+        std::printf ("    impossible de lire %s\n", path.c_str());
+        return;
+    }
+    keepMostSung (audio);
+    std::printf ("    %s\n", path.substr (path.find_last_of ("/\\") + 1).c_str());
+
+    for (const int pass : { 0, 1, 2 })
+    {
+        const bool hq = pass == 2, formant = pass == 1;
+        TuneEngine engine;
+        EngineParams p;
+        p.hq = hq;
+        p.formant = formant;
+        p.retuneMs = 0.0f;
+        p.hardTune = true;
+        p.noteMask = fileScale;
+        engine.setParams (p);
+        engine.prepare (audio.sampleRate);
+
+        const int latency = engine.getLatencySamples();
+        std::vector<float> out (audio.channels[0]);
+        out.resize (out.size() + (size_t) latency, 0.0f);
+        std::vector<DisplayFrame> plan;
+        for (size_t pos = 0; pos < out.size(); pos += 256)
+        {
+            float* channel = out.data() + pos;
+            engine.process (&channel, 1, (int) std::min<size_t> (256, out.size() - pos));
+            DisplayFrame frame;
+            while (engine.popDisplayFrame (frame))
+                plan.push_back (frame);
+        }
+        out.erase (out.begin(), out.begin() + latency);
+
+        // la consigne en vigueur à un instant, et ce qui l'entoure
+        const auto at = [&plan] (double t) -> const DisplayFrame*
+        {
+            auto it = std::lower_bound (plan.begin(), plan.end(), t, [] (const DisplayFrame& f, double x) { return f.time < x; });
+            if (it == plan.end()) return nullptr;
+            return &*it;
+        };
+
+        // Retard de la sortie sur la consigne : le décalage qui les accorde le mieux (en LIVE, la note décidée
+        // à partir d'une mesure s'entend un peu après le centre de cette mesure)
+        const auto heard = listen (out, audio.sampleRate);
+        double shift = 0.0;
+        int fewest = 1 << 30;
+        for (double s = 0.0; s <= 0.0801; s += 0.0025)
+        {
+            int misses = 0;
+            for (const auto& h : heard)
+                if (const auto* f = at (h.time - s); f != nullptr && f->voiced && std::abs (h.inMidi - f->outMidi) > 0.6f)
+                    ++misses;
+            if (misses < fewest) { fewest = misses; shift = s; }
+        }
+        std::printf ("    HARD TUNE %s : la sortie suit la consigne avec %.1f ms de retard\n", hq ? "HQ" : (formant ? "LIVE formant" : "LIVE"), 1000.0 * shift);
+
+        struct Tally { int count = 0, over = 0; double sum = 0.0; };
+        Tally steady, moving, change, wrong;
+        for (auto h : heard)
+        {
+            h.time -= shift;
+            const auto* f = at (h.time);
+            if (f == nullptr || ! f->voiced)
+                continue;
+
+            const double err = 100.0 * ((double) h.inMidi - (double) f->outMidi);
+            bool changing = false;
+            for (double dtc = -0.03; dtc <= 0.03; dtc += 0.005)
+                if (const auto* g = at (h.time + dtc); g != nullptr && g->voiced && std::lround (g->outMidi) != std::lround (f->outMidi))
+                    changing = true;
+            const auto* a = at (h.time - 0.008);
+            const auto* b = at (h.time + 0.008);
+            const bool fast = a != nullptr && b != nullptr && a->voiced && b->voiced && std::abs (b->inMidi - a->inMidi) / 0.016 > 6.0;
+
+            if (std::abs (err) > 60.0 && std::getenv ("DIAG_DETAIL") != nullptr)
+            {
+                // ce que la voix chantait vraiment là, réécouté sur l'entrée
+                static std::vector<DisplayFrame> input;
+                static const void* inputOf = nullptr;
+                if (inputOf != &audio) { input = listen (audio.channels[0], audio.sampleRate); inputOf = &audio; }
+                auto it = std::lower_bound (input.begin(), input.end(), h.time, [] (const DisplayFrame& fr, double x) { return fr.time < x; });
+                const float sung = it != input.end() && std::abs (it->time - h.time) < 0.01 ? it->inMidi : 0.0f;
+                std::printf ("        %6.3f s  chante %6.2f (detecteur %6.2f)  vise %6.2f  entendu %6.2f\n", h.time, (double) sung, (double) f->inMidi,
+                             (double) f->outMidi, (double) h.inMidi);
+            }
+
+            Tally& t = std::abs (err) > 60.0 ? wrong : (changing ? change : (fast ? moving : steady));
+            ++t.count;
+            t.sum += std::abs (err);
+            t.over += std::abs (err) > 10.0 ? 1 : 0;
+        }
+
+        const auto show = [] (const char* what, const Tally& t)
+        {
+            std::printf ("      %-26s %5d mesures   ecart moyen %5.1f cents   %4.1f %% au-dela de 10 cents\n", what, t.count,
+                         t.sum / std::max (1, t.count), 100.0 * t.over / std::max (1, t.count));
+        };
+        show ("note tenue", steady);
+        show ("voix qui bouge vite", moving);
+        show ("changement de note", change);
+        show ("autre note (> 60 cents)", wrong);
+    }
+}
+
 void processFile (const std::string& path, const std::string& outDir)
 {
     Audio audio;
@@ -1763,46 +1936,7 @@ void processFile (const std::string& path, const std::string& outDir)
         std::printf ("    canal %d : crete %.4f sur %.1f s\n", (int) ch, (double) channelPeak, (double) audio.length() / audio.sampleRate);
     }
 
-    // On garde les 45 secondes les plus chantées : inutile de traiter du silence.
-    {
-        const int second = audio.sampleRate;
-        const int seconds = audio.length() / second;
-        std::vector<int> active ((size_t) seconds + 1, 0);
-        for (int sec = 0; sec < seconds; ++sec)
-        {
-            double sum = 0.0;
-            for (int i = 0; i < second; ++i)
-            {
-                double v = 0.0;
-                for (const auto& ch : audio.channels)
-                    v += (double) ch[(size_t) (sec * second + i)];
-                sum += v * v;
-            }
-
-            active[(size_t) sec + 1] = active[(size_t) sec] + (std::sqrt (sum / second) > 0.004 ? 1 : 0);
-        }
-
-        const int span = std::min (45, seconds);
-        int bestStart = 0, bestCount = -1;
-        for (int startSec = 0; startSec + span <= seconds; ++startSec)
-        {
-            const int count = active[(size_t) (startSec + span)] - active[(size_t) startSec];
-            if (count > bestCount)
-            {
-                bestCount = count;
-                bestStart = startSec;
-            }
-        }
-
-        for (auto& ch : audio.channels)
-        {
-            ch.erase (ch.begin(), ch.begin() + bestStart * second);
-            ch.resize ((size_t) (span * second));
-        }
-
-        std::printf ("    extrait : %d s a partir de %d s (%d s chantees)\n", span, bestStart, bestCount);
-    }
-
+    keepMostSung (audio);
     const int keep = audio.length();
 
     std::string name = path.substr (path.find_last_of ("/\\") + 1);
@@ -2020,6 +2154,10 @@ int main (int argc, char** argv)
                 for (int k = 0; k < 12; ++k)
                     if (name == names[k] || name == sharps[k])
                         fileScale = pitchClassMask (scales[2].mask, k);
+            }
+            else if (std::string (argv[1]) == "diagnostic")
+            {
+                diagnoseFile (arg);
             }
             else
             {

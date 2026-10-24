@@ -1,4 +1,5 @@
 #include "PitchViews.h"
+#include "Instrument.h"
 
 #include "../DSP/Scales.h"
 
@@ -7,8 +8,6 @@ namespace onirique::ui
 
 namespace
 {
-    constexpr float pi = juce::MathConstants<float>::pi;
-
     juce::String noteName (int midi)
     {
         return tune::noteNames[((midi % 12) + 12) % 12];
@@ -19,10 +18,10 @@ namespace
         return (int) std::floor ((double) midi / 12.0) - 1;
     }
 
-    /** Point sur un cercle, angle compté depuis le haut dans le sens horaire. */
-    juce::Point<float> onCircle (juce::Point<float> centre, float radius, float angle)
+    /** Écart en demi-tons -> angle sur l'échelle : +/- 50 cents sur +/- 60 degrés. */
+    float angleOf (float semitones) noexcept
     {
-        return { centre.x + radius * std::sin (angle), centre.y - radius * std::cos (angle) };
+        return juce::jlimit (-0.55f, 0.55f, semitones) * 2.0f * (pi / 3.0f);
     }
 }
 
@@ -33,36 +32,12 @@ TunerDial::TunerDial()
     setInterceptsMouseClicks (false, false);
 }
 
-void TunerDial::resized()
-{
-    const float side = (float) juce::jmin (getWidth(), getHeight());
-    if (side < 8.0f || sigil.isNull())
-        return;
-
-    // Le sigil et son halo sont préparés une fois pour toutes à cette taille.
-    const int width = juce::roundToInt (side * 0.66f);
-    const int height = juce::roundToInt ((float) width * (float) sigil.getHeight() / (float) sigil.getWidth());
-    sigilScaled = sigil.rescaled (width, height, juce::Graphics::highResamplingQuality);
-
-    // Le halo déborde du sigil : on le calcule dans une image plus large.
-    const int pad = juce::roundToInt (side * 0.12f);
-    juce::Image padded (juce::Image::ARGB, width + 2 * pad, height + 2 * pad, true);
-    {
-        juce::Graphics pg (padded);
-        pg.drawImageAt (sigilScaled, pad, pad);
-    }
-
-    sigilGlow = juce::Image (juce::Image::ARGB, padded.getWidth(), padded.getHeight(), true);
-    juce::Graphics g (sigilGlow);
-    juce::DropShadow (palette::ember.withAlpha (0.85f), pad / 2, {}).drawForImage (g, padded);
-}
-
 void TunerDial::push (const tune::DisplayFrame& frame)
 {
     if (! frame.voiced)
         return;
 
-    // Si la note change, on saute dessus ; sinon on lisse l'aiguille.
+    // Si la note change, on saute dessus ; sinon on lisse.
     const bool jump = std::abs (frame.outMidi - outMidi) > 0.75f || silentFor > 0.25;
     inMidi = jump ? frame.inMidi : inMidi + 0.35f * (frame.inMidi - inMidi);
     outMidi = jump ? frame.outMidi : outMidi + 0.35f * (frame.outMidi - outMidi);
@@ -79,6 +54,11 @@ void TunerDial::tick (double seconds)
     const float rate = target > presence ? 14.0f : 2.2f;
     presence += juce::jlimit (0.0f, 1.0f, rate * (float) seconds) * (target - presence);
 
+    // l'aiguille a un peu d'inertie, comme une vraie
+    const int note = juce::roundToInt (vocoderOn ? noteMidi : outMidi);
+    approach (needle, inMidi - (float) note, 0.45f);
+    approach (tuned, outMidi - (float) note, 0.6f);
+
     repaint();
 }
 
@@ -86,167 +66,133 @@ void TunerDial::paint (juce::Graphics& g)
 {
     const auto area = getLocalBounds().toFloat();
     const float side = juce::jmin (area.getWidth(), area.getHeight());
-    const float u = side / 400.0f;
-    const auto centre = area.getCentre();
+    const auto c = area.getCentre();
+    const float u = side / 276.0f;
+    const float R = side * 0.5f - 3.0f, glassR = R - 11.0f * u;
 
-    // Braise qui respire derrière le sigil
+    // le logement, la lunette de métal tourné, puis le verre
+    g.setColour (juce::Colours::black.withAlpha (0.7f));
+    g.fillEllipse (circle (c.translated (0.0f, 2.0f), R + 2.0f));
+    g.setGradientFill (juce::ColourGradient (pal::metalHi.brighter (0.25f), c.x, c.y - R, pal::metalLo, c.x, c.y + R, false));
+    g.fillEllipse (circle (c, R));
+    for (int i = 0; i < 120; ++i)
     {
-        const float breathe = 0.82f + 0.18f * std::sin ((float) clock * 2.0f * pi / 5.0f);
-        const float radius = 150.0f * u * (0.94f + 0.06f * breathe);
-        juce::ColourGradient glow (palette::ember.withAlpha ((0.34f + 0.2f * presence) * breathe), centre.x, centre.y,
-                                   palette::blood.withAlpha (0.0f), centre.x + radius, centre.y, true);
-        glow.addColour (0.6, palette::blood.withAlpha (0.2f * breathe));
-        g.setGradientFill (glow);
-        g.fillEllipse (juce::Rectangle<float> (radius * 2.0f, radius * 2.0f).withCentre (centre));
+        const float a = (float) i / 120.0f * twoPi;
+        const float light = juce::jmax (0.0f, -std::cos (a - 0.35f));
+        g.setColour (juce::Colours::white.withAlpha (0.015f + 0.05f * light * light));
+        g.drawLine (juce::Line<float> (polar (c, a, glassR + 2.0f), polar (c, a, R - 1.0f)), 1.0f);
     }
+    g.setColour (juce::Colours::black.withAlpha (0.85f));
+    g.drawEllipse (circle (c, R), 1.0f);
 
-    // Réticule : deux cercles en pointillés et quatre traits, un tour par minute
     {
-        const auto spin = juce::AffineTransform::rotation ((float) clock * 2.0f * pi / 60.0f, centre.x, centre.y);
-        g.setColour (juce::Colour (0xffffe1e4).withAlpha (0.38f));
+        juce::Graphics::ScopedSaveState save (g);
+        juce::Path face;
+        face.addEllipse (circle (c, glassR));
+        g.reduceClipRegion (face);
 
-        juce::Path inner, innerDashed;
-        inner.addCentredArc (centre.x, centre.y, 150.0f * u, 150.0f * u, 0.0f, 0.0f, 2.0f * pi, true);
-        const float innerDashes[] = { 180.0f * u, 40.0f * u, 60.0f * u, 40.0f * u, 120.0f * u, 50.0f * u };
-        juce::PathStrokeType (1.2f * u).createDashedStroke (innerDashed, inner, innerDashes, 6, spin);
-        g.fillPath (innerDashed);
+        // le fond du cadran : la voix l'éclaire de l'intérieur
+        juce::ColourGradient bg (pal::bloodDeep.withMultipliedBrightness (0.6f + 0.9f * presence), c.x, c.y, pal::glass, c.x + glassR, c.y, true);
+        g.setGradientFill (bg);
+        g.fillEllipse (circle (c, glassR));
 
-        juce::Path outer, outerDashed;
-        outer.addCentredArc (centre.x, centre.y, 186.0f * u, 186.0f * u, 0.0f, 0.0f, 2.0f * pi, true);
-        const float outerDashes[] = { 2.0f * u, 9.0f * u };
-        juce::PathStrokeType (0.9f * u).createDashedStroke (outerDashed, outer, outerDashes, 2, spin);
-        g.fillPath (outerDashed);
-
-        juce::Path ticks;
-        for (int i = 0; i < 4; ++i)
+        // l'échelle : -50 à +50 cents, un trait tous les 10, et ses chiffres
+        const float scaleR = glassR - 20.0f * u;
+        for (int i = -5; i <= 5; ++i)
         {
-            const float a = (float) i * 0.5f * pi;
-            ticks.startNewSubPath (onCircle (centre, 134.0f * u, a));
-            ticks.lineTo (onCircle (centre, 194.0f * u, a));
+            const float a = angleOf ((float) i * 0.1f);
+            const bool major = i == 0 || std::abs (i) == 5;
+            g.setColour (pal::rose.withAlpha (major ? 0.55f : 0.25f));
+            g.drawLine (juce::Line<float> (polar (c, a, scaleR - (major ? 12.0f : 7.0f) * u), polar (c, a, scaleR)), major ? 1.4f * u : 1.0f * u);
         }
-        g.strokePath (ticks, juce::PathStrokeType (1.4f * u), spin);
-    }
+        g.setFont (fonts->monoFont (9.0f * u));
+        g.setColour (pal::rose.withAlpha (0.45f));
+        for (auto [s, t] : { std::pair { -0.5f, "-50" }, std::pair { 0.0f, "0" }, std::pair { 0.5f, "+50" } })
+            g.drawText (t, circle (polar (c, angleOf (s), scaleR - 22.0f * u), 12.0f * u), juce::Justification::centred, false);
 
-    // Sigil : entier au repos, en filigrane quand la note s'affiche
-    if (sigilScaled.isValid())
-    {
-        const float alpha = 1.0f - 0.9f * presence;
-        const float hover = 4.0f * u * std::sin ((float) clock * 2.0f * pi / 7.0f);
-        const auto glowAt = juce::Point<float> (centre.x - (float) sigilGlow.getWidth() * 0.5f, centre.y - (float) sigilGlow.getHeight() * 0.5f + hover);
-        const auto imageAt = juce::Point<float> (centre.x - (float) sigilScaled.getWidth() * 0.5f, centre.y - (float) sigilScaled.getHeight() * 0.5f + hover);
-
-        g.setOpacity (0.9f * alpha);
-        g.drawImageAt (sigilGlow, juce::roundToInt (glowAt.x), juce::roundToInt (glowAt.y));
-        g.setOpacity (alpha);
-        g.drawImageAt (sigilScaled, juce::roundToInt (imageAt.x), juce::roundToInt (imageAt.y));
-        g.setOpacity (1.0f);
-    }
-
-    // Étoiles qui scintillent autour
-    {
-        const juce::Point<float> spots[] = { { 0.80f, 0.10f }, { 0.10f, 0.84f }, { 0.97f, 0.47f } };
-        const float sizes[] = { 20.0f, 13.0f, 15.0f };
-        for (int i = 0; i < 3; ++i)
+        // au repos, le sigil en filigrane
+        if (sigil.isValid() && presence < 0.98f)
         {
-            const float twinkle = 0.5f + 0.5f * std::sin ((float) clock * 2.0f * pi / 3.2f + (float) i * 2.1f);
-            drawStar (g, { area.getX() + spots[i].x * side + (area.getWidth() - side) * 0.5f, area.getY() + spots[i].y * side + (area.getHeight() - side) * 0.5f },
-                      sizes[i] * u * 1.3f * (0.6f + 0.4f * twinkle), 0.2f + 0.8f * twinkle);
-        }
-    }
-
-    if (presence < 0.02f)
-        return;
-
-    // Avec le vocodeur, la note affichée est celle que joue son synthé.
-    const int note = juce::roundToInt (vocoderOn ? noteMidi : outMidi);
-    const float inOffset = juce::jlimit (-0.55f, 0.55f, inMidi - (float) note);
-    const float outOffset = juce::jlimit (-0.55f, 0.55f, outMidi - (float) note);
-
-    // Jauge : +/- 50 cents sur un arc de 120 degrés en haut du réticule
-    {
-        const float radius = 116.0f * u;
-        const auto angleOf = [] (float semitones) { return semitones * 2.0f * (pi / 3.0f); };
-
-        juce::Path track;
-        track.addCentredArc (centre.x, centre.y, radius, radius, 0.0f, angleOf (-0.5f), angleOf (0.5f), true);
-        g.setColour (palette::rose.withAlpha (0.16f * presence));
-        g.strokePath (track, juce::PathStrokeType (3.0f * u, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-
-        juce::Path ticks;
-        for (int i = -2; i <= 2; ++i)
-        {
-            const float a = angleOf ((float) i * 0.25f);
-            ticks.startNewSubPath (onCircle (centre, radius + 7.0f * u, a));
-            ticks.lineTo (onCircle (centre, radius + (i == 0 ? 17.0f : 12.0f) * u, a));
-        }
-        g.setColour (palette::rose.withAlpha (0.4f * presence));
-        g.strokePath (ticks, juce::PathStrokeType (1.2f * u));
-
-        const float a0 = angleOf (juce::jmin (inOffset, outOffset));
-        const float a1 = angleOf (juce::jmax (inOffset, outOffset));
-        if (a1 - a0 > 0.004f)
-        {
-            juce::Path correction;
-            correction.addCentredArc (centre.x, centre.y, radius, radius, 0.0f, a0, a1, true);
-            strokeGlow (g, correction, palette::ember.withAlpha (presence), 3.0f * u, 2.4f * u);
-            g.setColour (palette::ember.withAlpha (presence));
-            g.strokePath (correction, juce::PathStrokeType (3.0f * u, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            const float w = glassR * 0.95f, h = w * (float) sigil.getHeight() / (float) sigil.getWidth();
+            g.setOpacity (0.22f * (1.0f - presence));
+            g.drawImage (sigil, juce::Rectangle<float> (w, h).withCentre (c.translated (0.0f, 8.0f * u)), juce::RectanglePlacement::centred);
+            g.setOpacity (1.0f);
         }
 
-        const auto sung = onCircle (centre, radius, angleOf (inOffset));
-        g.setColour (palette::bone.withAlpha (presence));
-        g.fillEllipse (juce::Rectangle<float> (9.0f * u, 9.0f * u).withCentre (sung));
-
-        const auto tuned = onCircle (centre, radius, angleOf (outOffset));
-        g.setColour (palette::ember.withAlpha (0.45f * presence));
-        g.fillEllipse (juce::Rectangle<float> (20.0f * u, 20.0f * u).withCentre (tuned));
-        g.setColour (palette::emberHot.withAlpha (presence));
-        g.fillEllipse (juce::Rectangle<float> (11.0f * u, 11.0f * u).withCentre (tuned));
-    }
-
-    // Note visée, en grand, incandescente
-    {
-        const auto font = fonts->displayFont (104.0f * u);
-        const auto name = noteName (note);
-        const float width = juce::GlyphArrangement::getStringWidth (font, name);
-        const float baseline = centre.y + 40.0f * u;
-
-        juce::GlyphArrangement glyphs;
-        glyphs.addLineOfText (font, name, centre.x - width * 0.5f - 10.0f * u, baseline);
-        juce::Path text;
-        glyphs.createPath (text);
-
-        strokeGlow (g, text, palette::ember.withAlpha (presence), 0.0f, 7.0f * u);
-        g.setColour (palette::mist.withAlpha (presence));
-        g.fillPath (text);
-
-        g.setColour (palette::haze.withAlpha (presence));
-        g.setFont (fonts->monoFont (22.0f * u));
-        g.drawText (juce::String (octaveOf (note)), juce::Rectangle<float> (centre.x + width * 0.5f - 4.0f * u, baseline - 26.0f * u, 40.0f * u, 30.0f * u),
-                    juce::Justification::centredLeft, false);
-
-        if (vocoderOn)
+        if (presence > 0.02f)
         {
-            const auto tagFont = fonts->monoBoldFont (13.0f * u, 0.14f);
-            const auto tag = "MIDI " + juce::String (note);
-            const float tagWidth = juce::GlyphArrangement::getStringWidth (tagFont, tag) + 22.0f * u;
-            const auto pill = juce::Rectangle<float> (tagWidth, 24.0f * u).withCentre ({ centre.x, centre.y - 62.0f * u });
+            // la correction : l'arc de braise entre la voix chantée et la sortie
+            const float a0 = angleOf (juce::jmin (needle, tuned)), a1 = angleOf (juce::jmax (needle, tuned));
+            if (a1 - a0 > 0.004f)
+            {
+                juce::Path correction;
+                correction.addCentredArc (c.x, c.y, scaleR + 4.0f * u, scaleR + 4.0f * u, 0.0f, a0, a1, true);
+                g.setColour (pal::ember.withAlpha (0.25f * presence));
+                g.strokePath (correction, juce::PathStrokeType (7.0f * u, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+                g.setColour (pal::emberHot.withAlpha (presence));
+                g.strokePath (correction, juce::PathStrokeType (2.5f * u, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            }
 
-            g.setColour (palette::ember.withAlpha (0.18f * presence));
-            g.fillRoundedRectangle (pill, pill.getHeight() * 0.5f);
-            g.setColour (palette::ember.withAlpha (0.75f * presence));
-            g.drawRoundedRectangle (pill, pill.getHeight() * 0.5f, 1.0f * u);
-            g.setColour (palette::bone.withAlpha (presence));
-            g.setFont (tagFont);
-            g.drawText (tag, pill, juce::Justification::centred, false);
+            // la sortie : un témoin de braise sur l'échelle ; la voix : l'aiguille claire
+            led (g, polar (c, angleOf (tuned), scaleR + 4.0f * u), presence, 3.6f * u);
+            const float an = angleOf (needle);
+            juce::Path pointer;
+            const auto tip = polar (c, an, scaleR + 9.0f * u);
+            const auto base = polar (c, an, scaleR - 16.0f * u);
+            const auto side2 = polar ({}, an + 0.5f * pi, 2.2f * u);
+            pointer.addTriangle (tip, base + side2, base - side2);
+            g.setColour (juce::Colours::black.withAlpha (0.5f * presence));
+            g.fillPath (pointer, juce::AffineTransform::translation (0.0f, 1.0f));
+            g.setColour (pal::bone.withAlpha (presence));
+            g.fillPath (pointer);
+
+            // la note visée, en grand
+            const int note = juce::roundToInt (vocoderOn ? noteMidi : outMidi);
+            const auto font = fonts->displayFont (78.0f * u);
+            const auto name = noteName (note);
+            const float width = juce::GlyphArrangement::getStringWidth (font, name);
+            const float baseline = c.y + 36.0f * u;
+            juce::GlyphArrangement glyphs;
+            glyphs.addLineOfText (font, name, c.x - width * 0.5f - 8.0f * u, baseline);
+            juce::Path text;
+            glyphs.createPath (text);
+            g.setColour (pal::ember.withAlpha (0.18f * presence));
+            g.strokePath (text, juce::PathStrokeType (6.0f * u, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            g.setColour (pal::mist.withAlpha (presence));
+            g.fillPath (text);
+
+            g.setColour (pal::rose.withAlpha (0.6f * presence));
+            g.setFont (fonts->monoFont (18.0f * u));
+            g.drawText (juce::String (octaveOf (note)), juce::Rectangle<float> (c.x + width * 0.5f - 4.0f * u, baseline - 22.0f * u, 36.0f * u, 24.0f * u),
+                        juce::Justification::centredLeft, false);
+
+            const int centsOff = juce::roundToInt ((inMidi - (float) note) * 100.0f);
+            g.setColour (pal::bone.withAlpha (0.85f * presence));
+            g.setFont (fonts->monoFont (14.0f * u, 0.04f));
+            g.drawText ((centsOff > 0 ? "+" : "") + juce::String (centsOff) + " cents",
+                        juce::Rectangle<float> (c.x - 80.0f * u, baseline + 10.0f * u, 160.0f * u, 20.0f * u), juce::Justification::centred, false);
+
+            if (vocoderOn)
+            {
+                g.setColour (pal::emberHot.withAlpha (presence));
+                g.setFont (fonts->monoBoldFont (11.0f * u, 0.16f));
+                g.drawText ("MIDI " + juce::String (note), juce::Rectangle<float> (c.x - 60.0f * u, baseline + 32.0f * u, 120.0f * u, 16.0f * u),
+                            juce::Justification::centred, false);
+            }
         }
 
-        const int centsOff = juce::roundToInt ((inMidi - (float) note) * 100.0f);
-        g.setColour (palette::bone.withAlpha (0.9f * presence));
-        g.setFont (fonts->monoFont (17.0f * u, 0.04f));
-        g.drawText ((centsOff > 0 ? "+" : "") + juce::String (centsOff) + " cents",
-                    juce::Rectangle<float> (centre.x - 100.0f * u, baseline + 14.0f * u, 200.0f * u, 26.0f * u), juce::Justification::centred, false);
+        // le verre : ombre du bord haut et reflet en biais
+        g.setGradientFill (juce::ColourGradient (juce::Colours::black.withAlpha (0.55f), c.x, c.y - glassR, juce::Colours::transparentBlack, c.x, c.y - glassR + 30.0f * u, false));
+        g.fillEllipse (circle (c, glassR));
+        juce::ColourGradient sheen (juce::Colours::white.withAlpha (0.0f), c.x - glassR, c.y - glassR, juce::Colours::white.withAlpha (0.0f), c.x + glassR, c.y + glassR, false);
+        sheen.addColour (0.38, juce::Colours::white.withAlpha (0.0f));
+        sheen.addColour (0.45, juce::Colours::white.withAlpha (0.035f));
+        sheen.addColour (0.55, juce::Colours::white.withAlpha (0.0f));
+        g.setGradientFill (sheen);
+        g.fillEllipse (circle (c, glassR));
     }
+    g.setColour (juce::Colours::black.withAlpha (0.9f));
+    g.drawEllipse (circle (c, glassR), 1.2f);
 }
 
 //==============================================================================
@@ -318,16 +264,12 @@ void PitchTrace::tick()
 
 void PitchTrace::paint (juce::Graphics& g)
 {
-    const auto bounds = getLocalBounds().toFloat().reduced (0.5f);
-
-    juce::Path frame;
-    frame.addRoundedRectangle (bounds, 10.0f);
-    g.setColour (palette::well());
-    g.fillPath (frame);
+    const auto bounds = getLocalBounds().toFloat().reduced (2.0f);
+    glassBack (g, bounds, 6.0f);
 
     {
         juce::Graphics::ScopedSaveState clip (g);
-        g.reduceClipRegion (frame);
+        g.reduceClipRegion (bounds.toNearestInt());
 
         const float labelWidth = 40.0f;
         const auto plot = bounds.withTrimmedLeft (labelWidth).reduced (0.0f, 8.0f);
@@ -340,13 +282,13 @@ void PitchTrace::paint (juce::Graphics& g)
             const bool allowed = (noteMask & (1u << (((note % 12) + 12) % 12))) != 0;
             const float y = yOf ((float) note);
 
-            g.setColour (palette::rose.withAlpha (allowed ? 0.15f : 0.04f));
+            g.setColour (pal::rose.withAlpha (allowed ? 0.12f : 0.035f));
             g.fillRect (juce::Rectangle<float> (bounds.getX() + labelWidth, y - 0.5f, bounds.getWidth() - labelWidth, 1.0f));
 
             if (allowed && lastLabelY - y >= 11.0f)
             {
                 lastLabelY = y;
-                g.setColour (palette::haze.withAlpha (0.85f));
+                g.setColour (pal::rose.withAlpha (0.45f));
                 g.setFont (fonts->monoFont (9.0f));
                 g.drawText (noteName (note) + juce::String (octaveOf (note)), juce::Rectangle<float> (bounds.getX() + 8.0f, y - 6.0f, labelWidth - 10.0f, 12.0f),
                             juce::Justification::centredLeft, false);
@@ -382,16 +324,15 @@ void PitchTrace::paint (juce::Graphics& g)
         const auto sung = build (in);
         const auto tuned = build (out);
 
-        g.setColour (palette::bone.withAlpha (0.6f));
-        g.strokePath (sung, juce::PathStrokeType (1.3f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-
-        strokeGlow (g, tuned, palette::ember, 2.0f, 2.2f);
-        g.setColour (palette::emberHot);
-        g.strokePath (tuned, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.setColour (pal::bone.withAlpha (0.5f));
+        g.strokePath (sung, juce::PathStrokeType (1.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.setColour (pal::ember.withAlpha (0.22f));
+        g.strokePath (tuned, juce::PathStrokeType (5.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.setColour (pal::emberHot);
+        g.strokePath (tuned, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
         // Le passé s'estompe vers la gauche
-        juce::ColourGradient fade (juce::Colour (0xff0b0607).withAlpha (0.85f), plot.getX(), 0.0f,
-                                   juce::Colour (0xff0b0607).withAlpha (0.0f), plot.getX() + 150.0f, 0.0f, false);
+        juce::ColourGradient fade (pal::glass.withAlpha (0.9f), plot.getX(), 0.0f, pal::glass.withAlpha (0.0f), plot.getX() + 150.0f, 0.0f, false);
         g.setGradientFill (fade);
         g.fillRect (plot.withWidth (150.0f).expanded (0.0f, 8.0f));
 
@@ -400,20 +341,19 @@ void PitchTrace::paint (juce::Graphics& g)
         float x = bounds.getRight() - 150.0f;
         g.setFont (fonts->monoFont (9.0f, 0.12f));
 
-        g.setColour (palette::bone.withAlpha (0.6f));
-        g.fillRoundedRectangle (x, legendY - 1.0f, 14.0f, 2.0f, 1.0f);
-        g.setColour (palette::haze);
+        g.setColour (pal::bone.withAlpha (0.5f));
+        g.fillRect (x, legendY - 0.75f, 14.0f, 1.5f);
+        g.setColour (pal::rose.withAlpha (0.5f));
         g.drawText ("VOIX", juce::Rectangle<float> (x + 20.0f, legendY - 7.0f, 40.0f, 14.0f), juce::Justification::centredLeft, false);
 
         x += 68.0f;
-        g.setColour (palette::emberHot);
-        g.fillRoundedRectangle (x, legendY - 1.0f, 14.0f, 2.0f, 1.0f);
-        g.setColour (palette::haze);
+        g.setColour (pal::emberHot);
+        g.fillRect (x, legendY - 0.75f, 14.0f, 1.5f);
+        g.setColour (pal::rose.withAlpha (0.5f));
         g.drawText ("TUNER", juce::Rectangle<float> (x + 20.0f, legendY - 7.0f, 50.0f, 14.0f), juce::Justification::centredLeft, false);
     }
 
-    g.setColour (palette::rose.withAlpha (0.1f));
-    g.strokePath (frame, juce::PathStrokeType (1.0f));
+    glassFront (g, bounds, 6.0f);
 }
 
 } // namespace onirique::ui

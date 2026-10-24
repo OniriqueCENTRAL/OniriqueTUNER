@@ -7,12 +7,9 @@
 namespace onirique::ui
 {
 
-/** LED des pastilles : braise lumineuse allumée, rose pâle éteinte. */
-void drawLed (juce::Graphics&, juce::Point<float> centre, float diameter, bool lit);
-
 //==============================================================================
-/** Potard relié à un paramètre : cadran, libellé, valeur. Double-clic pour
-    revenir à la valeur par défaut. */
+/** Potard relié à un paramètre : nom sérigraphié au-dessus, valeur en dessous (un clic dessus pour la taper).
+    Double-clic : valeur par défaut ; Maj : réglage fin. */
 class Knob final : public juce::Component
 {
 public:
@@ -22,17 +19,23 @@ public:
     void resized() override;
     void mouseEnter (const juce::MouseEvent&) override { repaint(); }
     void mouseExit (const juce::MouseEvent&) override { repaint(); }
+    void mouseUp (const juce::MouseEvent&) override;
     void enablementChanged() override { repaint(); }
 
 private:
+    juce::Rectangle<float> valueArea() const;
+    void editValue();
+
     Fonts fonts;
     juce::String label;
+    juce::RangedAudioParameter* parameter;
     juce::Slider slider;
     juce::AudioProcessorValueTreeState::SliderAttachment attachment;
+    std::unique_ptr<juce::TextEditor> typing;
 };
 
 //==============================================================================
-/** Curseur horizontal compact relié à un paramètre : libellé, piste, valeur. */
+/** Curseur horizontal relié à un paramètre : nom, glissière gravée, valeur. */
 class Fader final : public juce::Component
 {
 public:
@@ -51,7 +54,7 @@ private:
 };
 
 //==============================================================================
-/** Sélecteur segmenté à pastille braise (LIVE | HQ). */
+/** Une rangée de touches à témoin reliée à un paramètre à choix (LIVE | HQ, forme du vibrato). */
 class ChoiceSwitch final : public juce::Component
 {
 public:
@@ -72,8 +75,8 @@ private:
 };
 
 //==============================================================================
-/** Pastille à LED reliée à un paramètre booléen. `litWhenOff` inverse le
-    voyant (un Bypass affiché comme un interrupteur "ON"). */
+/** Touche à témoin reliée à un paramètre booléen. `litWhenOff` inverse le témoin (un Bypass affiché comme un
+    interrupteur « ON »). */
 class LedButton final : public juce::Button
 {
 public:
@@ -89,8 +92,8 @@ private:
 };
 
 //==============================================================================
-/** Les douze notes : allumée = autorisée. Un clic retire une note de la
-    gamme, ou en ajoute une qui n'en fait pas partie. */
+/** Les douze notes sur un clavier d'une octave : une touche allumée est une note autorisée, la tonique est
+    marquée. Un clic retire une note de la gamme, ou en ajoute une qui n'en fait pas partie. */
 class NoteGrid final : public juce::Component
 {
 public:
@@ -105,7 +108,7 @@ public:
     void refresh();
 
 private:
-    juce::Rectangle<float> cellBounds (int note) const;
+    juce::Rectangle<float> keyBounds (int note) const;
     int noteAt (juce::Point<float>) const;
 
     Fonts fonts;

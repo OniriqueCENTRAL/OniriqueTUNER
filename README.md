@@ -1,9 +1,9 @@
 # ONIRIQUE TUNER — correction de hauteur et vocodeur pour la voix (VST3)
 
 Autotune dans l'esprit d'Auto-Tune Pro, avec un vocodeur piloté par la voix
-elle-même et la charte du site ONIRIQUE : dégradé sang → nuit, sigil
-incandescent dans son réticule, potards à arc braise, étoiles à quatre
-branches.
+elle-même. L'interface est un instrument de la même famille que ONIRIQUE VERB :
+façade de métal anodisé, potards usinés, touches à témoin, clavier d'une
+octave pour la gamme, cadran d'accordeur et courbe de hauteur sous verre.
 
 ![Interface](Apercu%20interface.png)
 
@@ -19,7 +19,7 @@ branches.
 | **LIVE / HQ** | LIVE : aucune latence, pour enregistrer avec le retour casque. HQ : la voix est retardée de 24 à 50 ms selon le registre (35 ms en Alto / Tenor, compensés par le DAW) pour une correction plus précise, à utiliser au mix. |
 | **Input Type** | Registre de la voix (Soprano, Alto / Tenor, Low Male) ou instrument. Aide le détecteur et fixe la latence du mode HQ. |
 | **Key / Scale** | Tonalité et gamme. Les notes allumées sont celles vers lesquelles la voix est ramenée. |
-| **Notes** | Un clic retire une note de la gamme, ou en ajoute une. Changer de tonalité ou de gamme remet les notes à zéro. |
+| **Notes** | Le clavier d'une octave : une touche allumée est une note de la gamme, la tonique est marquée d'un trait. Un clic retire une note, ou en ajoute une. Changer de tonalité ou de gamme remet les notes à zéro. |
 | **HARD TUNE** | L'effet robot : la voix est posée exactement sur la note, plate, et saute d'une note à l'autre sans transition. Éteint (par défaut), l'accordage est naturel : la note est juste mais la voix garde son vibrato, ses inflexions et ses glissés. |
 | **Retune Speed** | Accordage naturel : vitesse à laquelle la note est ramenée (0 ms : serré, la voix tombe juste tout de suite ; 20 à 60 ms : naturel ; au-delà : très discret). Avec HARD TUNE : netteté des sauts entre notes (0 ms = sauts francs). |
 | **Flex-Tune** | Ne corrige que lorsque la voix s'approche d'une note ; laisse libres les glissés et les effets volontaires. Sans effet avec HARD TUNE. |
@@ -35,13 +35,15 @@ branches.
 | **Mono / Octave / Fifth / Chord** | Ce que joue le synthé autour de la note chantée : la note seule, avec ses octaves, avec sa quinte, ou un accord de trois sons pris dans la gamme choisie. |
 | **Blend** | Dosage entre la voix accordée (0 %) et le vocodeur (100 %). |
 
-L'afficheur central montre la note visée, l'écart de la voix (point clair) et
-ce que le plugin corrige (arc braise). Avec le vocodeur, il indique aussi le
-numéro de la note MIDI tirée de la voix. La bande du dessous trace la hauteur
-chantée et la hauteur corrigée sur les lignes de la gamme.
+Le cadran central montre la note visée, l'écart de la voix (l'aiguille claire,
+sur une échelle de -50 à +50 cents) et ce que le plugin en fait (le témoin de
+braise ; l'arc entre les deux est la correction). Avec le vocodeur, il indique
+aussi le numéro de la note MIDI tirée de la voix. La bande du dessous trace la
+hauteur chantée et la hauteur corrigée sur les lignes de la gamme.
 
-L'interface se redimensionne par le coin en bas à droite ; double-clic sur
-un potard pour revenir à sa valeur par défaut.
+L'interface se redimensionne par le coin en bas à droite. Sur un potard :
+double-clic pour revenir à sa valeur par défaut, Maj pour un réglage fin, clic
+sur la valeur pour la taper (Detune se tape en Hz ou en cents).
 
 ### Le vocodeur en pratique
 
@@ -187,6 +189,11 @@ build-tests/Release/engine_test.exe vocodeur
 # moteur seul sur des fichiers (gamme mineure au choix, do par défaut) : écrit les versions naturelles et HARD TUNE dans Tests/out
 build-tests/Release/engine_test.exe Tests/out --minor=Bb "chemin/prise.wav"
 
+# HARD TUNE sur de vraies prises (LIVE, LIVE formant, HQ) : retard de la sortie sur la consigne, et écart à la
+# note sur les notes tenues, quand la voix bouge vite, aux changements de note (DIAG_DETAIL=1 : le détail des
+# mesures parties sur une autre note)
+build-tests/Release/engine_test.exe diagnostic --minor=Bb "chemin/prise.wav"
+
 # rendu de l'interface dans une image, sans DAW
 cmake --build build --config Release --target OniriqueTunerSnapshot
 build/Release/OniriqueTunerSnapshot.exe apercu.png 1.0 hq vocoder
@@ -200,7 +207,7 @@ build/OniriqueTunerHostTest_artefacts/Release/OniriqueTunerHostTest.exe "build/O
 
 ```
 Source/DSP/          moteur audio, indépendant de JUCE
-Source/GUI/          charte (Theme.h), contrôles, afficheurs, habillage
+Source/GUI/          charte (Theme.h), pièces de l'instrument (Instrument.h), contrôles, afficheurs, habillage
 Source/GUI/Assets/   sigil et polices du site
 Source/Plugin*.cpp   liaison avec le DAW, paramètres, interface
 Tests/               banc de test du moteur, voix de synthèse réaliste

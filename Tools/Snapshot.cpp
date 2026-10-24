@@ -1,11 +1,12 @@
 // Outil de développement : instancie le plugin sans DAW, lui fait chanter
 // une voix de synthèse, puis enregistre l'interface dans un fichier PNG.
 //
-//   OniriqueTunerSnapshot <sortie.png> [echelle] [hq] [formant] [hard] [silence]
+//   OniriqueTunerSnapshot <sortie.png> [echelle] [hq] [formant] [vocoder] [hard] [silence] [vibrato]
 
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
 #include "Parameters.h"
+#include "GUI/OniriqueWindowSize.h"
 
 #include <cmath>
 #include <iostream>
@@ -106,6 +107,21 @@ int main (int argc, char** argv)
     }
 
     editor->setSize (juce::roundToInt (OniriqueTunerEditor::baseWidth * scale), juce::roundToInt (OniriqueTunerEditor::baseHeight * scale));
+
+    // option « vibrato » : le panneau VIBRATO ouvert, comme après un clic sur sa touche
+    if (options.contains ("vibrato"))
+    {
+        std::function<void (juce::Component&)> openVibrato = [&openVibrato] (juce::Component& c)
+        {
+            for (auto* child : c.getChildren())
+            {
+                if (auto* button = dynamic_cast<juce::Button*> (child); button != nullptr && button->getName() == "VIBRATO" && button->onClick)
+                    button->onClick();
+                openVibrato (*child);
+            }
+        };
+        openVibrato (*editor);
+    }
     const auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
 
     juce::File file = juce::File::getCurrentWorkingDirectory().getChildFile (argv[1]);
@@ -119,5 +135,7 @@ int main (int argc, char** argv)
 
     std::cout << "ecrit : " << file.getFullPathName() << " (" << image.getWidth() << " x " << image.getHeight() << ")" << std::endl;
     editor.reset();
+    // la fermeture de la fenêtre a retenu la taille de la capture : ce n'est pas un choix de l'utilisateur
+    juce::PropertiesFile (onirique::window::settingsFile ("ONIRIQUE TUNER")).getFile().deleteFile();
     return 0;
 }

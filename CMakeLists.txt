@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(OniriqueTuner VERSION 1.2.1)
+project(OniriqueTuner VERSION 1.2.2)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -83,6 +83,7 @@ target_sources(OniriqueTuner PRIVATE
     Source/DSP/Vocoder.h
     Source/DSP/Vocoder.cpp
     Source/GUI/Theme.h
+    Source/GUI/Instrument.h
     Source/GUI/TunerLookAndFeel.h
     Source/GUI/TunerLookAndFeel.cpp
     Source/GUI/Controls.h
