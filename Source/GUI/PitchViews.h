@@ -21,6 +21,9 @@ public:
     /** Vocodeur en marche : l'afficheur montre la note MIDI tirée de la voix. */
     void setVocoder (bool isOn) noexcept { vocoderOn = isOn; }
 
+    /** Flex-Tune (0 à 1) : ses crochets bornent sur l'échelle la zone où la voix est corrigée. */
+    void setFlex (float amount) noexcept { flex = amount; }
+
     void paint (juce::Graphics&) override;
 
 private:
@@ -28,6 +31,7 @@ private:
     juce::Image sigil;
 
     bool vocoderOn = false;
+    float flex = 0.0f;
     float inMidi = 60.0f, outMidi = 60.0f, noteMidi = 60.0f;
     float needle = 0.0f, tuned = 0.0f;   // écarts affichés (demi-tons), avec l'inertie d'une aiguille
     float presence = 0.0f;

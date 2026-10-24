@@ -785,7 +785,7 @@ void testTransitions (double fs)
     };
 
     const double hold = 0.7;
-    double worstDeviation = 0.0, worstDelay = 0.0;
+    double wideWorst[3] {}, narrowWorst[3] {};   // pire écart, pire retard, somme des écarts
 
     for (const auto& m : moves)
     {
@@ -815,11 +815,14 @@ void testTransitions (double fs)
 
         const auto voice = synthVoice (model, end + hold, [&] (double t) { return 440.0 * std::pow (2.0, (sungAt (t) - 69.0) / 12.0); });
 
-        for (bool hq : { false, true })
+        for (int pass = 0; pass < 4; ++pass)
         {
+            // seuil de vibrato large (par défaut), puis étroit
+            const bool hq = (pass & 1) != 0, narrow = pass >= 2;
             EngineParams p;
             p.hq = hq;
             p.retuneMs = 20.0f;
+            p.narrowVibrato = narrow;
             const auto out = run (voice, fs, p);
 
             // Hauteur de sortie toutes les 2,5 ms, sur des fenêtres de 12 ms
@@ -867,22 +870,149 @@ void testTransitions (double fs)
 
             const double deviation = 100.0 * std::sqrt (sumSq / std::max (1, count));
             const double delay = 1000.0 * (outCross - idealCross);
-            std::printf ("    %s %s       %5.1f cents         %+5.1f ms     x%4.1f        %+5.1f cents\n", m.name, hq ? "HQ  " : "LIVE",
-                         deviation, delay, maxOut / std::max (1.0e-9, maxIdeal), 100.0 * landed / std::max (1, landedCount));
+            std::printf ("    %s %s%s %5.1f cents         %+5.1f ms     x%4.1f        %+5.1f cents\n", m.name, hq ? "HQ  " : "LIVE",
+                         narrow ? " etroit" : "       ", deviation, delay, maxOut / std::max (1.0e-9, maxIdeal), 100.0 * landed / std::max (1, landedCount));
 
             // En temps réel, la note d'arrivée n'est connue qu'une fois que la
             // voix freine : sur un glissé lent, le passage se fait dans sa
             // seconde moitié. Le retard se juge donc à la durée du glissé.
-            worstDeviation = std::max (worstDeviation, deviation);
-            worstDelay = std::max (worstDelay, std::abs (delay) / std::max (1.0, 0.2 * m.glideMs / 12.0));
+            auto& worst = narrow ? narrowWorst : wideWorst;
+            worst[0] = std::max (worst[0], deviation);
+            worst[1] = std::max (worst[1], std::abs (delay) / std::max (1.0, 0.2 * m.glideMs / 12.0));
+            worst[2] += deviation;
             check (std::abs (100.0 * landed / std::max (1, landedCount)) < 6.0, "la note d'arrivee doit etre juste");
         }
     }
 
     // Avant le suivi des glissés (1.1.4) : 35 a 70 cents d'ecart, 15 a 52 ms de retard.
-    std::printf ("    pire ecart au glisse ideal %.1f cents, pire retard %.1f ms (ramene a un glisse de 60 ms)\n", worstDeviation, worstDelay);
-    check (worstDeviation < 32.0, "la sortie doit suivre le glisse de la voix, sans tenir puis sauter");
-    check (worstDelay < 12.0, "la transition doit arriver au moment ou la voix la chante (a 20 % du glisse pres)");
+    for (const bool narrow : { false, true })
+    {
+        const auto& worst = narrow ? narrowWorst : wideWorst;
+        std::printf ("    seuil %-7s : pire ecart au glisse ideal %.1f cents (moyenne %.1f), pire retard %.1f ms (ramene a un glisse de 60 ms)\n",
+                     narrow ? "etroit" : "large", worst[0], worst[2] / 10.0, worst[1]);
+        check (worst[0] < 32.0, "la sortie doit suivre le glisse de la voix, sans tenir puis sauter");
+        check (worst[1] < 12.0, "la transition doit arriver au moment ou la voix la chante (a 20 % du glisse pres)");
+    }
+}
+
+/** Notes ignorées, comme le « Bypass » du clavier d'Auto-Tune : une voix dont c'est la note la plus proche passe
+    sans correction ; à côté, une voix proche d'une note normale est toujours corrigée. */
+void testSkippedNotes (double fs)
+{
+    std::printf ("\n[4e] Notes ignorees : do ignore (do majeur), voix 30 cents trop haut\n");
+
+    const VoiceModel model (fs);
+    const double c4 = 261.6256, d4 = 293.6648, sharp = std::pow (2.0, 30.0 / 1200.0);
+    const auto onC = synthVoice (model, 2.5, [=] (double) { return c4 * sharp; });
+    const auto onD = synthVoice (model, 2.5, [=] (double) { return d4 * sharp; });
+
+    for (bool hq : { false, true })
+    {
+        for (bool hard : { false, true })
+        {
+            EngineParams p;
+            p.hq = hq;
+            p.hardTune = hard;
+            p.retuneMs = 0.0f;
+            p.noteMask = pitchClassMask (scales[1].mask, 0);
+            p.skipMask = 1u << 0;
+            const auto left = pitchStats (run (onC, fs, p), fs, (int) (0.5 * fs), (int) (2.3 * fs), [=] (double) { return c4; });
+            const auto tuned = pitchStats (run (onD, fs, p), fs, (int) (0.5 * fs), (int) (2.3 * fs), [=] (double) { return d4; });
+            std::printf ("    %s %-10s  do ignore : %+6.2f cents (voix +30)   re corrige : %+6.2f cents\n", hq ? "HQ  " : "LIVE",
+                         hard ? "Hard Tune" : "naturel", left.meanCents, tuned.meanCents);
+            check (std::abs (left.meanCents - 30.0) < 3.0, "une note ignoree doit laisser passer la voix");
+            check (std::abs (tuned.meanCents) < 2.0, "une note normale doit rester corrigee");
+        }
+    }
+}
+
+/** Vibrato créé, comme le Vibrato FX d'Auto-Tune : le volume (Amplitude) et l'éclat vers 1,5 kHz (Timbre)
+    suivent le vibrato ; chaque cycle varie un peu en durée (Variation). */
+void testVibratoFx (double fs)
+{
+    std::printf ("\n[4f] Vibrato cree : volume et timbre qui le suivent, cycles qui varient\n");
+
+    const VoiceModel model (fs);
+    const auto voice = synthVoice (model, 3.5, [] (double) { return 220.0; });
+
+    const auto swingDb = [fs] (const std::vector<float>& x, double lowHz, double highHz)
+    {
+        // énergie par fenêtres de 10 ms entre 1,5 et 3,3 s ; avec une bande, deux passe-bande en série à son centre
+        std::vector<double> levels;
+        const bool band = highHz > 0.0;
+        const double w0 = 2.0 * pi * std::sqrt (std::max (1.0, lowHz * highHz)) / fs, alpha = std::sin (w0) / (2.0 * 2.0);
+        const double b0 = alpha / (1.0 + alpha), a1 = -2.0 * std::cos (w0) / (1.0 + alpha), a2 = (1.0 - alpha) / (1.0 + alpha);
+        double s[2][4] {};
+        const int win = (int) (0.01 * fs);
+        double acc = 0.0;
+        for (int i = 0; i < (int) (3.3 * fs); ++i)
+        {
+            double v = (double) x[(size_t) i];
+            for (int stage = 0; band && stage < 2; ++stage)
+            {
+                auto& z = s[stage];   // x1, x2, y1, y2
+                const double y = b0 * v - b0 * z[1] - a1 * z[2] - a2 * z[3];
+                z[1] = z[0]; z[0] = v; z[3] = z[2]; z[2] = y;
+                v = y;
+            }
+            if (i >= (int) (1.5 * fs))
+            {
+                acc += v * v;
+                if ((i - (int) (1.5 * fs)) % win == win - 1) { levels.push_back (10.0 * std::log10 (acc / win + 1.0e-20)); acc = 0.0; }
+            }
+        }
+        std::sort (levels.begin(), levels.end());
+        return levels[levels.size() * 95 / 100] - levels[levels.size() * 5 / 100];
+    };
+
+    EngineParams p;
+    p.hq = true;
+    p.retuneMs = 0.0f;
+    p.createdVibrato.on = true;
+    p.createdVibrato.depthCents = 30.0f;
+    p.createdVibrato.delayMs = 0.0f;
+    p.createdVibrato.onsetMs = 0.0f;
+    const double flatLevel = swingDb (run (voice, fs, p), 0.0, 0.0);
+    p.createdVibrato.amplitudeDb = 6.0f;
+    const double ampLevel = swingDb (run (voice, fs, p), 0.0, 0.0);
+    p.createdVibrato.amplitudeDb = 0.0f;
+    const auto bright = [&] (float timbre)
+    {
+        p.createdVibrato.timbreDb = timbre;
+        return swingDb (run (voice, fs, p), 1100.0, 2000.0);
+    };
+    const double toneFlat = bright (0.0f), toneBright = bright (9.0f);
+    std::printf ("    Amplitude 6 dB : le volume bouge de %.1f dB (sans : %.1f dB)\n", ampLevel, flatLevel);
+    std::printf ("    Timbre 9 dB    : la bande 1,1-2 kHz bouge de %.1f dB (sans : %.1f dB)\n", toneBright, toneFlat);
+    check (ampLevel > flatLevel + 7.0 && ampLevel < flatLevel + 16.0, "Amplitude doit faire suivre le volume au vibrato");
+    check (toneBright > toneFlat + 5.0, "Timbre doit faire suivre l'eclat au vibrato");
+
+    // Variation : la durée des cycles change d'un cycle à l'autre (sans : tous pareils)
+    const auto cycleSpread = [&] (float variation)
+    {
+        p.createdVibrato.timbreDb = 0.0f;
+        p.createdVibrato.variation = variation;
+        const auto out = run (voice, fs, p);
+        // passages de la hauteur par le centre, en montant
+        std::vector<double> ups;
+        double previous = 0.0;
+        for (int start = (int) (0.6 * fs); start + (int) (0.02 * fs) < (int) (3.4 * fs); start += (int) (0.0025 * fs))
+        {
+            const double f = measureF0 (out.data() + start, (int) (0.02 * fs), fs, 220.0);
+            if (f <= 0.0) continue;
+            const double c = cents (f, 220.0);
+            if (previous < 0.0 && c >= 0.0) ups.push_back ((double) start / fs);
+            previous = c;
+        }
+        double mean = 0.0, sq = 0.0;
+        for (size_t i = 1; i < ups.size(); ++i) mean += ups[i] - ups[i - 1];
+        mean /= std::max<size_t> (1, ups.size() - 1);
+        for (size_t i = 1; i < ups.size(); ++i) sq += (ups[i] - ups[i - 1] - mean) * (ups[i] - ups[i - 1] - mean);
+        return 1000.0 * std::sqrt (sq / std::max<size_t> (1, ups.size() - 1));
+    };
+    const double still = cycleSpread (0.0f), varied = cycleSpread (1.0f);
+    std::printf ("    Variation      : la duree des cycles varie de %.1f ms (sans : %.1f ms)\n", varied, still);
+    check (varied > still + 5.0, "Variation doit faire varier la duree des cycles");
 }
 
 /** Vibrato créé : une note tenue bien juste reçoit le vibrato choisi, après son délai. */
@@ -2179,6 +2309,8 @@ int main (int argc, char** argv)
             testVibrato (fs);
             testHardSteps (fs);
             testCreatedVibrato (fs);
+            testSkippedNotes (fs);
+            testVibratoFx (fs);
             testMelody (fs);
             testSampleRates();
         }

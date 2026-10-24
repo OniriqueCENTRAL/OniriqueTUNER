@@ -38,10 +38,16 @@ OniriqueTunerProcessor::OniriqueTunerProcessor()
     vibDelay = apvts.getRawParameterValue (ids::vibDelay);
     vibOnset = apvts.getRawParameterValue (ids::vibOnset);
     vibVariation = apvts.getRawParameterValue (ids::vibVariation);
+    vibAmplitude = apvts.getRawParameterValue (ids::vibAmplitude);
+    vibTimbre = apvts.getRawParameterValue (ids::vibTimbre);
+    vibThreshold = apvts.getRawParameterValue (ids::vibThreshold);
     bypassParam = apvts.getParameter (ids::bypass);
 
     for (int note = 0; note < 12; ++note)
+    {
         noteToggles[(size_t) note] = apvts.getRawParameterValue (onirique::params::noteToggleId (note));
+        noteSkips[(size_t) note] = apvts.getRawParameterValue (onirique::params::noteSkipId (note));
+    }
 
     apvts.addParameterListener (ids::key, this);
     apvts.addParameterListener (ids::scale, this);
@@ -129,14 +135,25 @@ std::uint16_t OniriqueTunerProcessor::getNoteMask() const noexcept
     return mask;
 }
 
+std::uint16_t OniriqueTunerProcessor::getSkipMask() const noexcept
+{
+    std::uint16_t mask = 0;
+    for (int note = 0; note < 12; ++note)
+        if (noteSkips[(size_t) note]->load() > 0.5f)
+            mask = (std::uint16_t) (mask | (1u << note));
+    return mask;
+}
+
 onirique::tune::EngineParams OniriqueTunerProcessor::readParams() const noexcept
 {
     onirique::tune::EngineParams p;
     p.hq = mode->load() > 0.5f;
     p.inputType = juce::roundToInt (input->load());
     p.noteMask = getNoteMask();
+    p.skipMask = getSkipMask();
     p.retuneMs = retune->load();
     p.hardTune = hardTune->load() > 0.5f;
+    p.narrowVibrato = vibThreshold->load() > 0.5f;
     p.flex = flex->load() * 0.01f;
     p.humanize = humanize->load() * 0.01f;
     p.vibrato = vibrato->load() / 12.0f;
@@ -147,6 +164,8 @@ onirique::tune::EngineParams OniriqueTunerProcessor::readParams() const noexcept
     p.createdVibrato.delayMs = vibDelay->load();
     p.createdVibrato.onsetMs = vibOnset->load();
     p.createdVibrato.variation = vibVariation->load() * 0.01f;
+    p.createdVibrato.amplitudeDb = vibAmplitude->load();
+    p.createdVibrato.timbreDb = vibTimbre->load();
     p.formant = formant->load() > 0.5f;
     p.throat = throat->load() * 0.01f;
     p.transpose = transpose->load();
@@ -203,13 +222,16 @@ void OniriqueTunerProcessor::timerCallback()
     {
         for (int note = 0; note < 12; ++note)
         {
-            if (auto* param = apvts.getParameter (onirique::params::noteToggleId (note)))
+            for (const auto& id : { onirique::params::noteToggleId (note), onirique::params::noteSkipId (note) })
             {
-                if (param->getValue() > 0.5f)
+                if (auto* param = apvts.getParameter (id))
                 {
-                    param->beginChangeGesture();
-                    param->setValueNotifyingHost (0.0f);
-                    param->endChangeGesture();
+                    if (param->getValue() > 0.5f)
+                    {
+                        param->beginChangeGesture();
+                        param->setValueNotifyingHost (0.0f);
+                        param->endChangeGesture();
+                    }
                 }
             }
         }

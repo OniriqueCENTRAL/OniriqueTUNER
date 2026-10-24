@@ -236,7 +236,11 @@ NoteGrid::NoteGrid (juce::AudioProcessorValueTreeState& stateToUse, std::functio
       getMask (std::move (noteMask)),
       key (stateToUse.getRawParameterValue (params::id::key))
 {
+    for (int note = 0; note < 12; ++note)
+        skips[(size_t) note] = stateToUse.getRawParameterValue (params::noteSkipId (note));
     setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    setTooltip (juce::String::fromUTF8 ("Les notes de la gamme. Clic : garder ou retirer une note. Clic droit : l'ignorer (témoin blanc), "
+                                        "la voix qui en est le plus près passe alors sans correction."));
     refresh();
 }
 
@@ -272,10 +276,16 @@ void NoteGrid::refresh()
 {
     const auto mask = getMask();
     const int currentKey = juce::roundToInt (key->load());
-    if (mask != shownMask || currentKey != shownKey)
+    std::uint16_t skipped = 0;
+    for (int note = 0; note < 12; ++note)
+        if (skips[(size_t) note]->load() > 0.5f)
+            skipped = (std::uint16_t) (skipped | (1u << note));
+
+    if (mask != shownMask || currentKey != shownKey || skipped != shownSkips)
     {
         shownMask = mask;
         shownKey = currentKey;
+        shownSkips = skipped;
         repaint();
     }
 }
@@ -325,7 +335,21 @@ void NoteGrid::paint (juce::Graphics& g)
                 g.drawText (tune::noteNames[note], k.withTop (k.getBottom() - 15.0f), juce::Justification::centred, false);
             }
 
-            led (g, { k.getCentreX(), black ? k.getBottom() - 10.0f : k.getY() + k.getHeight() * 0.62f }, lit ? 1.0f : 0.0f, 2.4f);
+            const juce::Point<float> lamp (k.getCentreX(), black ? k.getBottom() - 10.0f : k.getY() + k.getHeight() * 0.62f);
+            if ((shownSkips & (1u << note)) != 0)
+            {
+                // ignorée : un témoin blanc
+                g.setColour (juce::Colours::black.withAlpha (0.8f));
+                g.fillEllipse (circle (lamp, 3.4f));
+                g.setGradientFill (juce::ColourGradient (pal::bone.withAlpha (0.45f), lamp.x, lamp.y, pal::bone.withAlpha (0.0f), lamp.x + 10.0f, lamp.y, true));
+                g.fillEllipse (circle (lamp, 10.0f));
+                g.setColour (pal::bone);
+                g.fillEllipse (circle (lamp, 2.4f));
+            }
+            else
+            {
+                led (g, lamp, lit ? 1.0f : 0.0f, 2.4f);
+            }
 
             if (note == shownKey)   // la tonique : un trait de braise en haut de la touche
             {
@@ -342,7 +366,9 @@ void NoteGrid::mouseDown (const juce::MouseEvent& e)
     if (note < 0)
         return;
 
-    if (auto* parameter = state.getParameter (params::noteToggleId (note)))
+    // clic droit : ignorer la note (ou la reprendre)
+    const auto id = e.mods.isPopupMenu() ? params::noteSkipId (note) : params::noteToggleId (note);
+    if (auto* parameter = state.getParameter (id))
     {
         parameter->beginChangeGesture();
         parameter->setValueNotifyingHost (parameter->getValue() > 0.5f ? 0.0f : 1.0f);

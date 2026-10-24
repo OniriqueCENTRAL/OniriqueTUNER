@@ -37,6 +37,7 @@ inline constexpr ScaleDef scales[] = {
     { "Minor Pentatonic", scaleBits ({ 0, 3, 5, 7, 10 }) },
     { "Blues",            scaleBits ({ 0, 3, 5, 6, 7, 10 }) },
     { "Whole Tone",       scaleBits ({ 0, 2, 4, 6, 8, 10 }) },
+    { "Diminished",       scaleBits ({ 0, 1, 3, 4, 6, 7, 9, 10 }) },   // demi-ton, ton, en alternance
 };
 
 inline constexpr int numScales = (int) (sizeof (scales) / sizeof (scales[0]));

@@ -15,7 +15,9 @@ struct VibratoParams
     float depthCents = 30.0f;    // écart de chaque côté de la note
     float delayMs = 150.0f;      // début de la note -> début du vibrato
     float onsetMs = 250.0f;      // début du vibrato -> pleine amplitude
-    float variation = 0.15f;     // 0..1 : vitesse et amplitude changent un peu d'une note à l'autre
+    float variation = 0.15f;     // 0..1 : la durée et l'ampleur de chaque cycle changent un peu, comme chez un chanteur
+    float amplitudeDb = 0.0f;    // le volume suit le vibrato (dB de part et d'autre)
+    float timbreDb = 0.0f;       // la voix s'éclaircit vers 1,5 kHz quand le vibrato monte (dB de part et d'autre)
 };
 
 struct CorrectorParams
@@ -27,7 +29,9 @@ struct CorrectorParams
     float transpose = 0.0f;      // demi-tons
     double a4 = 440.0;           // diapason
     std::uint16_t noteMask = 0x0fff;
+    std::uint16_t skipMask = 0;  // notes ignorées : une voix dont c'est la note la plus proche passe sans correction
     bool hard = false;           // Hard Tune : notes plates et sauts instantanés, l'effet robot
+    bool narrowVibrato = false;  // seuil de vibrato étroit : moins de mouvement compte pour du vibrato, les glissés gardent leur forme
     VibratoParams created;
 };
 
@@ -49,7 +53,13 @@ struct CorrectorParams
     d'une note à l'autre d'un coup, sans glissé, dès que la voix franchit le
     milieu de deux notes (Auto-Tune, Retune Speed à 0).
 
-    Le vibrato créé s'ajoute ensuite, note par note, dans les deux modes. */
+    Comme le clavier d'Auto-Tune, une note peut être ignorée : tant que la voix
+    en est le plus près, elle passe sans correction. Le seuil de vibrato (large
+    ou étroit) règle ce qui compte pour du vibrato plutôt que pour un mouvement
+    de la voix.
+
+    Le vibrato créé s'ajoute ensuite, note par note, dans les deux modes ; chaque
+    cycle varie un peu en durée et en ampleur. */
 class PitchCorrector
 {
 public:
@@ -66,6 +76,9 @@ public:
 
         /** Note visée dans la gamme, transposition comprise. */
         float noteMidi = 0.0f;
+
+        /** Le vibrato créé à cet instant, de -1 à 1 (enveloppe comprise) : le volume et le timbre le suivent. */
+        float vibratoShape = 0.0f;
     };
 
     void reset() noexcept;
@@ -86,6 +99,7 @@ private:
 
     void resetCentre (double pitch) noexcept;
     void updateCentre (double pitch, double dt) noexcept;
+    void varyVibrato() noexcept;
 
     double quick = 0.0;          // hauteur à peine lissée (gigue du détecteur ôtée)
 
@@ -116,7 +130,7 @@ private:
     double shiftA = 0.0, shift = 0.0;     // correction en cours (demi-tons), deux pôles
 
     // vibrato créé
-    double vibPhase = 0.0, vibTime = 0.0, vibRateScale = 1.0, vibDepthScale = 1.0;
+    double vibPhase = 0.0, vibTime = 0.0, vibRateScale = 1.0, vibDepthScale = 1.0, vibShapeNow = 0.0;
     std::uint32_t seed = 0x9e3779b9u;
 
     float lastIn = 0.0f;

@@ -55,7 +55,7 @@ private:
 
 //==============================================================================
 /** Une rangée de touches à témoin reliée à un paramètre à choix (LIVE | HQ, forme du vibrato). */
-class ChoiceSwitch final : public juce::Component
+class ChoiceSwitch final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
     ChoiceSwitch (juce::RangedAudioParameter&, juce::StringArray labels);
@@ -93,8 +93,10 @@ private:
 
 //==============================================================================
 /** Les douze notes sur un clavier d'une octave : une touche allumée est une note autorisée, la tonique est
-    marquée. Un clic retire une note de la gamme, ou en ajoute une qui n'en fait pas partie. */
-class NoteGrid final : public juce::Component
+    marquée. Un clic retire une note de la gamme, ou en ajoute une qui n'en fait pas partie ; un clic droit
+    l'ignore (témoin blanc) : la voix qui en est le plus près passe sans correction, comme le « Bypass »
+    du clavier d'Auto-Tune. */
+class NoteGrid final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
     NoteGrid (juce::AudioProcessorValueTreeState&, std::function<std::uint16_t()> noteMask);
@@ -115,7 +117,8 @@ private:
     juce::AudioProcessorValueTreeState& state;
     std::function<std::uint16_t()> getMask;
     std::atomic<float>* key = nullptr;
-    std::uint16_t shownMask = 0;
+    std::array<std::atomic<float>*, 12> skips {};
+    std::uint16_t shownMask = 0, shownSkips = 0;
     int shownKey = -1, hovered = -1;
 };
 

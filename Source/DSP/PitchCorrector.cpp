@@ -14,6 +14,10 @@ namespace
     constexpr double quickHz = 25.0;            // lissage léger de la hauteur mesurée (gigue du détecteur)
     constexpr double centreSeconds = 0.18;      // une période de vibrato à 5,5 Hz : la moyenne l'efface
     constexpr double centreJump = 0.85;         // demi-tons d'écart au centre : au-delà, la voix a changé de note
+    // Seuil de vibrato étroit (comme le réglage « Narrow » d'Auto-Tune) : seul un vibrato discret compte pour du
+    // vibrato ; au-delà, c'est un mouvement de la voix, que la sortie suit tel quel (glissés et attaques par en
+    // dessous gardent leur forme).
+    constexpr double narrowSwing = 0.2;         // demi-ton : le plus large vibrato reconnu
     // ... ou bien elle s'est posée ailleurs : immobile, loin du centre, plus
     // longtemps qu'un vibrato ne s'arrête à son sommet.
     constexpr double settledFrom = 0.15;        // demi-tons
@@ -83,6 +87,12 @@ namespace
         return (mask & 0x0fff) == 0 || inMask (note, mask);
     }
 
+    /** Note ignorée : la plus proche de la voix, au demi-ton près, est marquée « laisser passer ». */
+    bool skipped (double midi, std::uint16_t skipMask) noexcept
+    {
+        return skipMask != 0 && inMask ((int) std::floor (midi + 0.5), skipMask);
+    }
+
     /** Moitié de l'écart entre une note et sa voisine dans la gamme, du côté
         où se trouve la voix : c'est là que la voix est à mi-chemin. */
     double halfGap (int note, double voice, std::uint16_t mask) noexcept
@@ -131,7 +141,7 @@ void PitchCorrector::reset() noexcept
     recentIndex = recentCount = 0;
     resetCentre (0.0);
     shiftA = shift = 0.0;
-    vibPhase = vibTime = 0.0;
+    vibPhase = vibTime = vibShapeNow = 0.0;
     vibRateScale = vibDepthScale = 1.0;
     velocity = 0.0;
     gliding = false;
@@ -177,15 +187,19 @@ void PitchCorrector::chooseNote (double judged, double hysteresis, std::uint16_t
         held = 0.0;
         vibTime = 0.0;
         vibPhase = 0.0;
-
-        // Variation : chaque note a sa vitesse et son amplitude, un peu différentes.
-        seed = seed * 1664525u + 1013904223u;
-        const double r1 = (double) (seed >> 8) / 16777216.0 * 2.0 - 1.0;
-        seed = seed * 1664525u + 1013904223u;
-        const double r2 = (double) (seed >> 8) / 16777216.0 * 2.0 - 1.0;
-        vibRateScale = 1.0 + 0.25 * r1;
-        vibDepthScale = 1.0 + 0.35 * r2;
+        varyVibrato();
     }
+}
+
+/** Variation du vibrato créé : chaque cycle a sa durée et son ampleur, un peu différentes. */
+void PitchCorrector::varyVibrato() noexcept
+{
+    seed = seed * 1664525u + 1013904223u;
+    const double r1 = (double) (seed >> 8) / 16777216.0 * 2.0 - 1.0;
+    seed = seed * 1664525u + 1013904223u;
+    const double r2 = (double) (seed >> 8) / 16777216.0 * 2.0 - 1.0;
+    vibRateScale = 1.0 + 0.25 * r1;
+    vibDepthScale = 1.0 + 0.35 * r2;
 }
 
 PitchCorrector::Output PitchCorrector::process (bool voiced, double frequencyHz, double dt, const CorrectorParams& p) noexcept
@@ -232,6 +246,14 @@ PitchCorrector::Output PitchCorrector::process (bool voiced, double frequencyHz,
 
     const double vibrato = createdVibrato (dt, p.created);
 
+    // Note ignorée : la voix passe telle quelle tant que c'est d'elle qu'elle est le plus près (le vibrato créé
+    // s'ajoute toujours). La correction repart de zéro en sortant : aucun saut.
+    if (p.hard && skipped (quick, p.skipMask))
+    {
+        shiftA = shift = 0.0;
+        return finish (pitch, wanted + vibrato, 0.0f);
+    }
+
     if (p.hard)
     {
         // La note se juge sur la voix à peine lissée, et la sortie est la note
@@ -252,15 +274,18 @@ PitchCorrector::Output PitchCorrector::process (bool voiced, double frequencyHz,
     const double away = quick - centre;
     resumeTime += dt;
 
+    // Le plus large vibrato reconnu comme tel : celui de la voix, ou moins avec le seuil étroit.
+    const double vibratoSwing = p.narrowVibrato ? std::min (swing, narrowSwing) : swing;
+
     if (! gliding)
     {
         // Dernier endroit où la voix était encore posée sur sa note : c'est de là
         // qu'elle part (le centre, une moyenne, a déjà un peu suivi le départ).
-        if (std::abs (away) < 0.5 * std::max (departFrom, departOverSwing * swing))
+        if (std::abs (away) < 0.5 * std::max (departFrom, departOverSwing * vibratoSwing))
             anchor = quick;
 
         // La voix part : plus loin que son vibrato, vite, en s'éloignant.
-        if (std::abs (away) > std::max (departFrom, departOverSwing * swing)
+        if (std::abs (away) > std::max (departFrom, departOverSwing * vibratoSwing)
             && std::abs (velocity) > departSpeed && velocity * away > 0.0)
         {
             gliding = true;
@@ -341,7 +366,8 @@ PitchCorrector::Output PitchCorrector::process (bool voiced, double frequencyHz,
     chooseNote (gliding ? quick : centre, naturalHysteresis, p.noteMask);
 
     const double toNote = (double) target - voice;
-    double aim = flexWeight (toNote, p.flex) * toNote;
+    const bool ignored = skipped (gliding ? quick : centre, p.skipMask);
+    double aim = ignored ? 0.0 : flexWeight (toNote, p.flex) * toNote;
 
     if (gliding)
     {
@@ -356,6 +382,8 @@ PitchCorrector::Output PitchCorrector::process (bool voiced, double frequencyHz,
         // correction visée vaut zéro : jamais d'à-coup d'une note à l'autre.
         const auto towards = [&p] (double at)
         {
+            if (skipped (at, p.skipMask))
+                return 0.0;
             const int note = nearestNote (at, p.noteMask);
             const double to = (double) note - at;
             const double half = halfGap (note, at, p.noteMask);
@@ -385,7 +413,7 @@ PitchCorrector::Output PitchCorrector::process (bool voiced, double frequencyHz,
     // À Retune 0 la note est imposée exactement (sans la gigue de la mesure) ;
     // dès que la correction prend du temps, la voix garde ses micro-variations.
     // Pendant un glissé, et le temps de la reprise, la voix garde les siennes.
-    const double resumed = gliding ? 0.0 : smoothStep (0.0, resumeSeconds, resumeTime);
+    const double resumed = gliding || ignored ? 0.0 : smoothStep (0.0, resumeSeconds, resumeTime);
     const float pin = (float) (resumed * (1.0 - smoothStep (0.5, 4.0, retuneMs)) * smoothStep (0.9, 0.999, flexWeight (toNote, p.flex)));
     return finish (pitch, voice + shift + vibrato, pin);
 }
@@ -470,21 +498,26 @@ void PitchCorrector::updateCentre (double pitch, double dt) noexcept
 double PitchCorrector::createdVibrato (double dt, const VibratoParams& v) noexcept
 {
     vibTime += dt;
-    if (! v.on || v.depthCents <= 0.0f)
+    vibShapeNow = 0.0;
+    if (! v.on)
         return 0.0;
 
     const double variation = std::clamp ((double) v.variation, 0.0, 1.0);
     const double rate = std::max (0.05, (double) v.rateHz * (1.0 + variation * (vibRateScale - 1.0)));
     vibPhase += rate * dt;
-    vibPhase -= std::floor (vibPhase);
+    if (vibPhase >= 1.0)
+    {
+        vibPhase -= std::floor (vibPhase);
+        varyVibrato();      // un nouveau cycle, un peu différent du précédent
+    }
 
     const double since = vibTime * 1000.0 - (double) v.delayMs;
     if (since <= 0.0)
         return 0.0;
 
     const double envelope = v.onsetMs <= 1.0f ? 1.0 : std::min (1.0, since / (double) v.onsetMs);
-    const double depth = (double) v.depthCents / 100.0 * (1.0 + variation * (vibDepthScale - 1.0));
-    return envelope * depth * vibratoShape (v.shape, vibPhase);
+    vibShapeNow = envelope * (1.0 + variation * (vibDepthScale - 1.0)) * vibratoShape (v.shape, vibPhase);
+    return (double) v.depthCents / 100.0 * vibShapeNow;
 }
 
 PitchCorrector::Output PitchCorrector::finish (double pitch, double outMidi, float pin) noexcept
@@ -492,7 +525,7 @@ PitchCorrector::Output PitchCorrector::finish (double pitch, double outMidi, flo
     lastIn = (float) pitch;
     lastOut = (float) outMidi;
     lastNote = (float) target;
-    return { true, lastIn, lastOut, pin, lastNote };
+    return { true, lastIn, lastOut, pin, lastNote, (float) vibShapeNow };
 }
 
 } // namespace onirique::tune

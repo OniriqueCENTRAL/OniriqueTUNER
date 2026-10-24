@@ -47,6 +47,12 @@ public:
     /** Notes autorisées : gamme et tonalité choisies, puis notes inversées à la main. */
     std::uint16_t getNoteMask() const noexcept;
 
+    /** Notes ignorées (la voix qui en est le plus près passe sans correction). */
+    std::uint16_t getSkipMask() const noexcept;
+
+    /** Flex-Tune, de 0 à 1 (pour dessiner sa zone de correction). */
+    float getFlex() const noexcept { return flex->load() * 0.01f; }
+
     /** Latence déclarée à l'hôte avec les réglages actuels, en millisecondes. */
     double getLatencyMs() const noexcept;
 
@@ -97,7 +103,10 @@ private:
     std::atomic<float>* vibDelay = nullptr;
     std::atomic<float>* vibOnset = nullptr;
     std::atomic<float>* vibVariation = nullptr;
-    std::array<std::atomic<float>*, 12> noteToggles {};
+    std::atomic<float>* vibAmplitude = nullptr;
+    std::atomic<float>* vibTimbre = nullptr;
+    std::atomic<float>* vibThreshold = nullptr;
+    std::array<std::atomic<float>*, 12> noteToggles {}, noteSkips {};
     juce::RangedAudioParameter* bypassParam = nullptr;
 
     std::atomic<bool> clearTogglesPending { false };

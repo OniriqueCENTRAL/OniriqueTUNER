@@ -35,12 +35,19 @@ namespace id
     inline constexpr const char* vibDelay     = "vibDelay";
     inline constexpr const char* vibOnset     = "vibOnset";
     inline constexpr const char* vibVariation = "vibVariation";
+    inline constexpr const char* vibAmplitude = "vibAmplitude";   // le volume suit le vibrato créé
+    inline constexpr const char* vibTimbre    = "vibTimbre";      // l'éclat suit le vibrato créé
+    inline constexpr const char* vibThreshold = "vibThreshold";   // seuil de vibrato : Wide / Narrow
 }
 
 /** Identifiant de l'interrupteur d'une note (0 = do ... 11 = si). Il inverse
     l'état que la gamme choisie donne à cette note : on peut ainsi retirer une
     note de la gamme ou en ajouter une. */
 juce::String noteToggleId (int pitchClass);
+
+/** Identifiant de « note ignorée » (0 = do ... 11 = si) : une voix dont c'est la note la plus proche passe sans
+    correction. */
+juce::String noteSkipId (int pitchClass);
 
 juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
 

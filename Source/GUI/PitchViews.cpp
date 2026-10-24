@@ -110,6 +110,27 @@ void TunerDial::paint (juce::Graphics& g)
         for (auto [s, t] : { std::pair { -0.5f, "-50" }, std::pair { 0.0f, "0" }, std::pair { 0.5f, "+50" } })
             g.drawText (t, circle (polar (c, angleOf (s), scaleR - 22.0f * u), 12.0f * u), juce::Justification::centred, false);
 
+        // Flex-Tune : deux crochets bornent la zone où la voix est corrigée (même calcul que le correcteur)
+        if (flex > 0.001f)
+        {
+            const float inner = std::pow (1.0f - juce::jmin (1.0f, flex), 1.5f) * 0.5f + 0.04f;
+            const float outer = inner * 1.6f + 0.08f;
+            if (outer < 0.55f)
+            {
+                g.setColour (pal::bone.withAlpha (0.75f));
+                for (const float edge : { -1.0f, 1.0f })
+                {
+                    const float a = angleOf (edge * outer), cap = -edge * 0.06f;
+                    juce::Path bracket;
+                    bracket.startNewSubPath (polar (c, a + cap, scaleR + 9.0f * u));
+                    bracket.lineTo (polar (c, a, scaleR + 9.0f * u));
+                    bracket.lineTo (polar (c, a, scaleR - 9.0f * u));
+                    bracket.lineTo (polar (c, a + cap, scaleR - 9.0f * u));
+                    g.strokePath (bracket, juce::PathStrokeType (1.4f * u));
+                }
+            }
+        }
+
         // au repos, le sigil en filigrane
         if (sigil.isValid() && presence < 0.98f)
         {

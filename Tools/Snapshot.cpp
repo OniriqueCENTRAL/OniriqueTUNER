@@ -1,7 +1,7 @@
 // Outil de développement : instancie le plugin sans DAW, lui fait chanter
 // une voix de synthèse, puis enregistre l'interface dans un fichier PNG.
 //
-//   OniriqueTunerSnapshot <sortie.png> [echelle] [hq] [formant] [vocoder] [hard] [silence] [vibrato]
+//   OniriqueTunerSnapshot <sortie.png> [echelle] [hq] [formant] [vocoder] [hard] [silence] [vibrato] [flex] [skip]
 
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
@@ -54,6 +54,9 @@ int main (int argc, char** argv)
     setParameter (tuner->apvts, ids::vocoder, options.contains ("vocoder") ? 1.0f : 0.0f);
     setParameter (tuner->apvts, ids::hardTune, options.contains ("hard") ? 1.0f : 0.0f);
     setParameter (tuner->apvts, ids::voicing, options.contains ("vocoder") ? 3.0f : 0.0f);
+    setParameter (tuner->apvts, ids::flex, options.contains ("flex") ? 55.0f : 0.0f);
+    if (options.contains ("skip"))   // ré ignoré
+        setParameter (tuner->apvts, onirique::params::noteSkipId (2).toRawUTF8(), 1.0f);
 
     plugin->setPlayConfigDetails (2, 2, sampleRate, blockSize);
     plugin->prepareToPlay (sampleRate, blockSize);

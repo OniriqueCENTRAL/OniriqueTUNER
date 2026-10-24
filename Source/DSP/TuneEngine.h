@@ -18,8 +18,10 @@ struct EngineParams
     bool hq = false;                     // false = LIVE (sans latence), true = HQ
     int inputType = 1;                   // voir TuneEngine::inputTypeNames
     std::uint16_t noteMask = 0x0fff;     // classes de hauteur autorisées (bit 0 = do)
+    std::uint16_t skipMask = 0;          // notes ignorées : la voix qui en est le plus près passe sans correction
     float retuneMs = 20.0f;
     bool hardTune = false;               // effet robot : notes plates, sauts francs
+    bool narrowVibrato = false;          // seuil de vibrato étroit (voir CorrectorParams)
     float flex = 0.0f;                   // 0..1
     float humanize = 0.0f;               // 0..1
     float vibrato = 0.0f;                // -1..1
@@ -78,7 +80,7 @@ class TuneEngine
 public:
     static constexpr int maxChannels = 2;
     static constexpr int numInputTypes = 5;
-    static constexpr const char* inputTypeNames[numInputTypes] = { "Soprano", "Alto / Tenor", "Low Male", "Instrument", "Bass Inst" };
+    static constexpr const char* inputTypeNames[numInputTypes] = { "Soprano", "Alto / Tenor", "Baritone / Bass", "Instrument", "Bass Inst" };
     static constexpr int maxNoteEvents = 256;
 
     void prepare (double sampleRate);
@@ -112,6 +114,7 @@ private:
 
         void setLowpass (double sampleRate, double frequency, double q) noexcept;
         void setHighpass (double sampleRate, double frequency, double q) noexcept;
+        void setPeak (double sampleRate, double frequency, double q, double gainDb) noexcept;
         void clear() noexcept { z1 = z2 = 0.0; }
     };
 
@@ -135,6 +138,7 @@ private:
         float pin = 0.0f;         // 1 = sortie imposée, 0 = simple transposition
         float noteMidi = 0.0f;    // note visée dans la gamme
         float level = 0.0f;
+        float vibrato = 0.0f;     // vibrato créé, de -1 à 1 : le volume et le timbre le suivent
         bool voiced = false;
     };
 
@@ -264,6 +268,11 @@ private:
     SincBank sincLive, sincHq;
     const SincBank* sinc = nullptr;
     std::vector<float> hannTable;
+
+    // --- le volume et le timbre qui suivent le vibrato créé
+    std::array<Biquad, maxChannels> vibratoTone;
+    float vibratoNow = 0.0f, vibratoShown = 0.0f;
+    int vibratoToneLeft = 0;
 
     // --- vocodeur et notes
     Vocoder vocoder;

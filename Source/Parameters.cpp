@@ -12,6 +12,11 @@ juce::String noteToggleId (int pitchClass)
     return "note" + juce::String (pitchClass);
 }
 
+juce::String noteSkipId (int pitchClass)
+{
+    return "noteSkip" + juce::String (pitchClass);
+}
+
 juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
 {
     using Float = juce::AudioParameterFloat;
@@ -106,6 +111,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     layout.add (std::make_unique<Float> (juce::ParameterID { id::vibDelay, 1 }, "Vibrato Delay", Range (0.0f, 2000.0f, 1.0f, 0.5f), 150.0f, ms));
     layout.add (std::make_unique<Float> (juce::ParameterID { id::vibOnset, 1 }, "Vibrato Onset", Range (0.0f, 2000.0f, 1.0f, 0.5f), 250.0f, ms));
     layout.add (std::make_unique<Float> (juce::ParameterID { id::vibVariation, 1 }, "Vibrato Variation", Range (0.0f, 100.0f, 0.1f), 15.0f, percent));
+
+    // Ajouts de la 1.2.3, à la fin : les projets et les automations existants ne bougent pas.
+    const auto decibels = withText ([] (float v) { return juce::String (v, 1) + " dB"; });
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::vibAmplitude, 1 }, "Vibrato Amplitude", Range (0.0f, 12.0f, 0.1f), 0.0f, decibels));
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::vibTimbre, 1 }, "Vibrato Timbre", Range (0.0f, 12.0f, 0.1f), 0.0f, decibels));
+    layout.add (std::make_unique<Choice> (juce::ParameterID { id::vibThreshold, 1 }, "Vibrato Threshold", juce::StringArray { "Wide", "Narrow" }, 0));
+    for (int note = 0; note < 12; ++note)
+        layout.add (std::make_unique<Bool> (juce::ParameterID { noteSkipId (note), 1 }, juce::String ("Bypass ") + tune::noteNames[note], false));
 
     return layout;
 }

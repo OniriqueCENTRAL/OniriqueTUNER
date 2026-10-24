@@ -50,7 +50,8 @@ namespace
         explicit VibratoButton (std::atomic<float>* onValue) : juce::Button ("VIBRATO"), on (onValue)
         {
             setMouseCursor (juce::MouseCursor::PointingHandCursor);
-            setTooltip ("Vibrato : ajoute un vibrato a la voix accordee, note par note. Clic pour ses reglages.");
+            setTooltip (juce::String::fromUTF8 ("Vibrato : ajoute un vibrato à la voix accordée, note par note, et règle ce qui compte "
+                                                "pour du vibrato dans la voix. Clic pour ses réglages."));
         }
 
         void setCompact (bool shouldBeCompact) { if (shouldBeCompact != compact) { compact = shouldBeCompact; repaint(); } }
@@ -90,24 +91,30 @@ namespace
         bool compact = false, open = false, shownLit = false;
     };
 
-    /** Le panneau déroulé par VIBRATO : en marche / arrêt, forme, puis vitesse, amplitude, délai avant le début
-        du vibrato, montée et variation d'une note à l'autre (le « Create Vibrato » d'Auto-Tune). */
+    /** Le panneau déroulé par VIBRATO, comme celui d'Auto-Tune : le seuil qui distingue le vibrato de la voix de ses
+        changements de note, puis le vibrato créé (en marche / arrêt, forme, vitesse, ampleur, délai, montée,
+        variation d'un cycle à l'autre, et le volume et l'éclat qui le suivent). */
     class VibratoPanel final : public juce::Component
     {
     public:
         explicit VibratoPanel (juce::AudioProcessorValueTreeState& state)
             : power (*state.getParameter (ids::vibOn), "ON", "OFF"),
               shape (*state.getParameter (ids::vibShape), { "SINE", "TRIANGLE", "SQUARE", "SAW" }),
+              threshold (*state.getParameter (ids::vibThreshold), { "WIDE", "NARROW" }),
               rate (state, ids::vibRate, "Rate"),
               depth (state, ids::vibDepth, "Depth"),
               delay (state, ids::vibDelay, "Delay"),
               onset (state, ids::vibOnset, "Onset"),
-              variation (state, ids::vibVariation, "Variation")
+              variation (state, ids::vibVariation, "Variation"),
+              amplitude (state, ids::vibAmplitude, "Amplitude"),
+              timbre (state, ids::vibTimbre, "Timbre")
         {
-            for (auto* child : std::initializer_list<juce::Component*> { &power, &shape, &rate, &depth, &delay, &onset, &variation })
+            for (auto* child : std::initializer_list<juce::Component*> { &power, &shape, &threshold, &rate, &depth, &delay, &onset, &variation, &amplitude, &timbre })
                 addAndMakeVisible (child);
+            threshold.setTooltip (juce::String::fromUTF8 ("Seuil de vibrato. WIDE : les vibratos amples de la voix sont gardés. NARROW : pour un "
+                                                          "vibrato discret ; les glissés et les attaques par en dessous gardent leur forme."));
             brushed = brushedMetal();
-            setSize (452, 236);
+            setSize (580, 262);
         }
 
         void paint (juce::Graphics& g) override
@@ -132,17 +139,21 @@ namespace
             g.setFont (fonts->monoFont (9.0f, 0.06f));
             g.drawText ("ADDED TO THE TUNED VOICE, NOTE BY NOTE", juce::Rectangle<float> (plate.getX() + 16.0f, plate.getY() + 32.0f, 300.0f, 14.0f),
                         juce::Justification::centredLeft, false);
+            ink (g, "SHAPE", { plate.getX() + 16.0f, plate.getY() + 52.0f, 200.0f, 14.0f }, juce::Justification::centredLeft, 9.5f, 0.55f);
+            ink (g, "VOICE VIBRATO", { (float) threshold.getX() + 2.0f, plate.getY() + 52.0f, 200.0f, 14.0f }, juce::Justification::centredLeft, 9.5f, 0.55f);
+            groove (g, (float) threshold.getX() - 12.0f, plate.getY() + 54.0f, (float) threshold.getX() - 12.0f, plate.getY() + 102.0f);
         }
 
         void resized() override
         {
             const auto plate = getLocalBounds().reduced (8);
             power.setBounds (plate.getRight() - 16 - 76, plate.getY() + 10, 76, 30);
-            shape.setBounds (plate.getX() + 14, plate.getY() + 54, plate.getWidth() - 28, 30);
+            shape.setBounds (plate.getX() + 14, plate.getY() + 68, 352, 30);
+            threshold.setBounds (plate.getRight() - 14 - 168, plate.getY() + 68, 168, 30);
 
-            const int top = plate.getY() + 98, width = (plate.getWidth() - 24) / 5;
+            const int top = plate.getY() + 110, width = (plate.getWidth() - 24) / 7;
             int x = plate.getX() + 12;
-            for (auto* knob : { &rate, &depth, &delay, &onset, &variation })
+            for (auto* knob : { &rate, &depth, &delay, &onset, &variation, &amplitude, &timbre })
             {
                 knob->setBounds (x, top, width, plate.getBottom() - top - 8);
                 x += width;
@@ -153,8 +164,8 @@ namespace
         Fonts fonts;
         juce::Image brushed;
         LedButton power;
-        ChoiceSwitch shape;
-        Knob rate, depth, delay, onset, variation;
+        ChoiceSwitch shape, threshold;
+        Knob rate, depth, delay, onset, variation, amplitude, timbre;
     };
 
     /** Couvre l'interface quand le panneau VIBRATO est ouvert : un clic à côté le referme. */
@@ -273,6 +284,7 @@ public:
         // Les réglages du vocodeur s'éclairent quand il est en marche.
         const bool vocoding = tuner.isVocoderOn();
         dial.setVocoder (vocoding);
+        dial.setFlex (natural ? tuner.getFlex() : 0.0f);
         if (vocoding != blend.isEnabled())
         {
             blend.setEnabled (vocoding);

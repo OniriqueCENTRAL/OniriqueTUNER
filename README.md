@@ -17,14 +17,14 @@ octave pour la gamme, cadran d'accordeur et courbe de hauteur sous verre.
 | Réglage | Rôle |
 |---|---|
 | **LIVE / HQ** | LIVE : aucune latence, pour enregistrer avec le retour casque. HQ : la voix est retardée de 24 à 50 ms selon le registre (35 ms en Alto / Tenor, compensés par le DAW) pour une correction plus précise, à utiliser au mix. |
-| **Input Type** | Registre de la voix (Soprano, Alto / Tenor, Low Male) ou instrument. Aide le détecteur et fixe la latence du mode HQ. |
-| **Key / Scale** | Tonalité et gamme. Les notes allumées sont celles vers lesquelles la voix est ramenée. |
-| **Notes** | Le clavier d'une octave : une touche allumée est une note de la gamme, la tonique est marquée d'un trait. Un clic retire une note, ou en ajoute une. Changer de tonalité ou de gamme remet les notes à zéro. |
+| **Input Type** | Registre de la voix ou instrument, avec les plages d'Auto-Tune : Soprano 100-1200 Hz, Alto / Tenor 85-800 Hz, Baritone / Bass 53-600 Hz, Instrument 52-2000 Hz, Bass Inst 24,5-400 Hz. Aide le détecteur et fixe la latence du mode HQ. |
+| **Key / Scale** | Tonalité et gamme (chromatique, majeure, mineure, mineures harmonique et mélodique, modes, pentatoniques, blues, par tons, diminuée). Les notes allumées sont celles vers lesquelles la voix est ramenée. |
+| **Notes** | Le clavier d'une octave : une touche allumée est une note de la gamme, la tonique est marquée d'un trait. Un clic retire une note, ou en ajoute une. Un clic droit l'ignore (témoin blanc), comme le « Bypass » du clavier d'Auto-Tune : une voix dont c'est la note la plus proche passe sans correction. Changer de tonalité ou de gamme remet les notes à zéro. |
 | **HARD TUNE** | L'effet robot : la voix est posée exactement sur la note, plate, et saute d'une note à l'autre sans transition. Éteint (par défaut), l'accordage est naturel : la note est juste mais la voix garde son vibrato, ses inflexions et ses glissés. |
 | **Retune Speed** | Accordage naturel : vitesse à laquelle la note est ramenée (0 ms : serré, la voix tombe juste tout de suite ; 20 à 60 ms : naturel ; au-delà : très discret). Avec HARD TUNE : netteté des sauts entre notes (0 ms = sauts francs). |
-| **Flex-Tune** | Ne corrige que lorsque la voix s'approche d'une note ; laisse libres les glissés et les effets volontaires. Sans effet avec HARD TUNE. |
+| **Flex-Tune** | Ne corrige que lorsque la voix s'approche d'une note ; laisse libres les glissés et les effets volontaires. Deux crochets bornent sur le cadran la zone corrigée. Sans effet avec HARD TUNE. |
 | **Humanize** | Relâche la correction sur les notes tenues, sans toucher aux notes brèves. Sans effet avec HARD TUNE. |
-| **VIBRATO** (en-tête) | Ajoute un vibrato à chaque note, comme le « Create Vibrato » d'Auto-Tune : forme (sinus, triangle, carré, dent de scie), vitesse, amplitude, délai avant le début, montée, variation d'une note à l'autre. Marche aussi avec HARD TUNE. |
+| **VIBRATO** (en-tête) | Ajoute un vibrato à chaque note, comme le Vibrato FX d'Auto-Tune : forme (sinus, triangle, carré, dent de scie), vitesse, ampleur en cents, délai avant le début, montée, variation (chaque cycle change un peu de durée et d'ampleur), Amplitude (le volume suit le vibrato, en dB) et Timbre (la voix s'éclaircit vers 1,5 kHz quand il monte, en dB). Marche aussi avec HARD TUNE. Le même panneau règle le seuil de vibrato de la voix : WIDE (par défaut) garde les vibratos amples ; NARROW, pour un vibrato discret, ne compte pas plus de 20 cents pour du vibrato, et les glissés gardent leur forme. |
 | **Natural Vibrato** | Atténue (vers la gauche, -12 = note plate) ou accentue (vers la droite) le vibrato du chanteur. Sans effet avec HARD TUNE. |
 | **Formant** | Éteint : son classique, le timbre suit la note. Allumé : le timbre est préservé, utile pour les grosses transpositions. |
 | **Throat** | Longueur de gorge (avec Formant) : plus long = voix plus sombre, plus court = plus claire. |

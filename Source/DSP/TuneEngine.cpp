@@ -14,17 +14,18 @@ namespace
         double minFrequency, maxFrequency;
     };
 
+    // Les plages vocales d'Auto-Tune (Vocal Range) : une voix aiguë qui descend sous 150 Hz reste suivie
     constexpr Range ranges[TuneEngine::numInputTypes] = {
-        { 150.0, 1300.0 },   // soprano
-        {  85.0,  900.0 },   // alto / ténor
-        {  55.0,  600.0 },   // voix grave
-        {  80.0, 2000.0 },   // instrument
-        {  28.0,  450.0 },   // instrument basse
+        { 100.0, 1200.0 },   // soprano
+        {  85.0,  800.0 },   // alto / ténor
+        {  53.0,  600.0 },   // baryton / basse
+        {  52.0, 2000.0 },   // instrument
+        {  24.5,  400.0 },   // instrument basse
     };
 
     constexpr int hopAnalysis = 64;            // une mesure de hauteur toutes les ~2,7 ms
     constexpr int smoothFrames = 2;            // mesures d'avance utilisées par le lissage HQ
-    constexpr double lowestFrequency = 28.0;
+    constexpr double lowestFrequency = 24.5;
     constexpr double pi = 3.14159265358979323846;
     constexpr int maxLags = 256;
     constexpr float farBelowVoice = 0.0126f;   // 38 dB sous le niveau récent de la voix : repisse, pas la voix
@@ -119,6 +120,19 @@ void TuneEngine::Biquad::setHighpass (double sampleRate, double frequency, doubl
     b2 = b0;
     a1 = -2.0 * c / a0;
     a2 = (1.0 - alpha) / a0;
+}
+
+void TuneEngine::Biquad::setPeak (double sampleRate, double frequency, double q, double gainDb) noexcept
+{
+    const double w0 = 2.0 * pi * frequency / sampleRate;
+    const double a = std::pow (10.0, gainDb / 40.0);
+    const double alpha = std::sin (w0) / (2.0 * q);
+    const double a0 = 1.0 + alpha / a;
+    b0 = (1.0 + alpha * a) / a0;
+    b1 = -2.0 * std::cos (w0) / a0;
+    b2 = (1.0 - alpha * a) / a0;
+    a1 = b1;
+    a2 = (1.0 - alpha / a) / a0;
 }
 
 //==============================================================================
@@ -237,6 +251,10 @@ void TuneEngine::restart() noexcept
     corrector.reset();
     rawCount = rawCursor = 0;
     controlCount = controlCursor = 0;
+    for (auto& tone : vibratoTone)
+        tone.clear();
+    vibratoNow = vibratoShown = 0.0f;
+    vibratoToneLeft = 0;
     noteCursor = 0;
 
     markRing[0] = { nowD - (double) latency, (float) unvoicedPeriod, false };
@@ -325,7 +343,11 @@ void TuneEngine::setParams (const EngineParams& p) noexcept
     correctorParams.transpose = params.transpose;
     correctorParams.a4 = 440.0 * std::pow (2.0, (double) params.detuneCents / 1200.0);
     correctorParams.noteMask = p.noteMask;
+    correctorParams.skipMask = p.skipMask;
+    correctorParams.narrowVibrato = p.narrowVibrato;
     correctorParams.created = p.createdVibrato;
+    correctorParams.created.amplitudeDb = clean (p.createdVibrato.amplitudeDb, 0.0f, 12.0f, 0.0f);
+    correctorParams.created.timbreDb = clean (p.createdVibrato.timbreDb, 0.0f, 12.0f, 0.0f);
     correctorParams.created.shape = std::clamp (p.createdVibrato.shape, 0, 3);
     correctorParams.created.rateHz = clean (p.createdVibrato.rateHz, 0.1f, 12.0f, 5.5f);
     correctorParams.created.depthCents = clean (p.createdVibrato.depthCents, 0.0f, 200.0f, 30.0f);
@@ -440,6 +462,26 @@ void TuneEngine::process (float* const* channels, int numCh, int numSamples) noe
 
         float wet[maxChannels] = { 0.0f, 0.0f };
         renderGrains (wet, numCh);
+
+        // Vibrato créé, comme le Vibrato FX d'Auto-Tune : le volume et l'éclat (une cloche vers 1,5 kHz) suivent
+        // le vibrato de la voix accordée, celui qui s'entend à cet instant.
+        const auto& created = correctorParams.created;
+        if (created.on && (created.amplitudeDb > 0.01f || created.timbreDb > 0.01f))
+        {
+            if (--vibratoToneLeft <= 0)
+            {
+                vibratoToneLeft = 16;
+                const Control heard = hq ? lookupControl ((double) now - (double) latency) : newestControl();
+                vibratoNow = heard.voiced ? heard.vibrato : 0.0f;
+                for (auto& tone : vibratoTone)
+                    tone.setPeak (fs, 1500.0, 0.9, (double) created.timbreDb * (double) vibratoShown);
+            }
+
+            vibratoShown += mixCoef * (vibratoNow - vibratoShown);
+            const float gain = (float) std::pow (10.0, (double) created.amplitudeDb * (double) vibratoShown / 20.0);
+            for (int ch = 0; ch < numCh; ++ch)
+                wet[ch] = (float) vibratoTone[(size_t) ch].process ((double) wet[ch]) * gain;
+        }
 
         float dry[maxChannels] = { 0.0f, 0.0f };
         for (int ch = 0; ch < numCh; ++ch)
@@ -577,6 +619,7 @@ void TuneEngine::emitControl (const Raw& raw) noexcept
     control.pin = out.pin;
     control.noteMidi = out.noteMidi;
     control.level = raw.level;
+    control.vibrato = out.vibratoShape;
     if (out.voiced)
         control.outPeriod = (float) (fs / (correctorParams.a4 * std::pow (2.0, ((double) out.outMidi - 69.0) / 12.0)));
 
