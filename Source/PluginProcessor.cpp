@@ -247,6 +247,7 @@ void OniriqueTunerProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     auto state = apvts.copyState();
     state.setProperty ("editorScale", (double) editorScale.load(), nullptr);
+    presets.writeState (state);   // le côté A/B écouté, et l'autre
 
     if (const auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
@@ -258,7 +259,8 @@ void OniriqueTunerProcessor::setStateInformation (const void* data, int sizeInBy
     {
         if (xml->hasTagName (apvts.state.getType()))
         {
-            const auto state = juce::ValueTree::fromXml (*xml);
+            auto state = juce::ValueTree::fromXml (*xml);
+            presets.readState (state);   // l'autre côté A/B
             editorScale.store (juce::jlimit (0.7f, 2.0f, (float) (double) state.getProperty ("editorScale", 1.0)));
 
             restoringState.store (true);

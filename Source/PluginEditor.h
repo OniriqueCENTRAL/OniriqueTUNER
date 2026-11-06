@@ -1,4 +1,5 @@
 #pragma once
+#include "GUI/OniriqueBar.h"   // la barre « Nuit » de VOCALBOX
 
 #include "GUI/TunerLookAndFeel.h"
 #include "../License/OniriqueThemeButton.h"
@@ -30,6 +31,11 @@ private:
 
     OniriqueTunerProcessor& tuner;
     bool sizeRestored = false;   // les redimensionnements de la construction ne sont pas gardés
+
+    // la barre « Nuit » (presets, IN, A/B, copier/coller, menu ⋯ avec la couleur de l'interface), au-dessus de la façade
+    static constexpr int kTop = 50;
+    static juce::Image barSigil();
+    onirique::nuit::Bar bar { tuner.presets, tuner.apvts, "TUNER", barSigil(), baseWidth, baseWidth };
     onirique::ui::TunerLookAndFeel lookAndFeel;
     std::unique_ptr<Content> content;
 

@@ -2,6 +2,7 @@
 
 #include "DSP/TuneEngine.h"
 #include "License/LicenseGuard.h"
+#include "GUI/OniriquePresets.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
@@ -40,6 +41,9 @@ public:
 
     //==============================================================================
     juce::AudioProcessorValueTreeState apvts;
+
+    /** Les réglages gardés (presets de l'utilisateur, Onirique/Tuner/Presets) et la comparaison A/B : la barre « Nuit » du haut. */
+    onirique::PresetBank presets { apvts, "Tuner", { { "Default", 0, {} } }, {} };
 
     /** Mesures de hauteur destinées à l'interface (à appeler depuis elle seule). */
     bool popDisplayFrame (onirique::tune::DisplayFrame& frame) noexcept { return engine.popDisplayFrame (frame); }

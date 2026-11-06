@@ -70,20 +70,10 @@ void TunerDial::paint (juce::Graphics& g)
     const float u = side / 276.0f;
     const float R = side * 0.5f - 3.0f, glassR = R - 11.0f * u;
 
-    // le logement, la lunette de métal tourné, puis le verre
-    g.setColour (juce::Colours::black.withAlpha (0.7f));
-    g.fillEllipse (circle (c.translated (0.0f, 2.0f), R + 2.0f));
-    g.setGradientFill (juce::ColourGradient (pal::metalHi.brighter (0.25f), c.x, c.y - R, pal::metalLo, c.x, c.y + R, false));
-    g.fillEllipse (circle (c, R));
-    for (int i = 0; i < 120; ++i)
-    {
-        const float a = (float) i / 120.0f * twoPi;
-        const float light = juce::jmax (0.0f, -std::cos (a - 0.35f));
-        g.setColour (juce::Colours::white.withAlpha (0.015f + 0.05f * light * light));
-        g.drawLine (juce::Line<float> (polar (c, a, glassR + 2.0f), polar (c, a, R - 1.0f)), 1.0f);
-    }
-    g.setColour (juce::Colours::black.withAlpha (0.85f));
-    g.drawEllipse (circle (c, R), 1.0f);
+    // la lunette : le verre liquide de VOCALBOX (anneau), puis le cadran
+    onirique::da::glass (g, circle (c, R), R, u, true);
+    g.setColour (onirique::look::emberPink.withAlpha (0.12f));
+    g.drawEllipse (circle (c, glassR + 0.5f), 1.0f);
 
     {
         juce::Graphics::ScopedSaveState save (g);

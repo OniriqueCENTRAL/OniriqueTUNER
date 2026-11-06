@@ -224,6 +224,7 @@ public:
                                                                       &notes, &formantButton, &throat, &transpose, &detune, &vocoderButton,
                                                                       &voicingBox, &blend, &tracking, &retune, &flex, &humanize, &vibrato, &mix })
             addAndMakeVisible (child);
+        power.setVisible (false);   // marche / arrêt : IN dans la barre « Nuit »
 
         addAndMakeVisible (vibratoButton);
         addChildComponent (catcher);
@@ -399,18 +400,7 @@ private:
         const auto bounds = juce::Rectangle<float> ((float) baseWidth, (float) baseHeight);
         drawFaceplate (g, bounds, brushed);
 
-        // la marque : le sigil, ONIRIQUE sérigraphié, « Tuner » en gothique couleur braise
-        g.setOpacity (1.0f);
-        g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
-        g.drawImage (sigil, juce::Rectangle<float> (18.0f, 17.0f, 30.0f, 30.0f), juce::RectanglePlacement::centred);
-        const auto brandFont = fonts->displayFont (15.0f, 0.14f);
-        g.setColour (pal::ink.withAlpha (0.92f));
-        g.setFont (brandFont);
-        g.drawText ("ONIRIQUE", juce::Rectangle<float> (brandX, 18.0f, 220.0f, 30.0f), juce::Justification::centredLeft, false);
-        g.setColour (pal::ember);
-        g.setFont (fonts->dreamFont (33.0f));
-        g.drawText ("Tuner", juce::Rectangle<float> (brandX + juce::GlyphArrangement::getStringWidth (brandFont, "ONIRIQUE") + 10.0f, 10.0f, 140.0f, 40.0f),
-                    juce::Justification::centredLeft, false);
+        // la marque est dans la barre « Nuit » au-dessus
 
         groove (g, 0.0f, 64.0f, bounds.getRight(), 64.0f);
 
@@ -469,18 +459,22 @@ OniriqueTunerEditor::OniriqueTunerEditor (OniriqueTunerProcessor& p)
     content = std::make_unique<Content> (p);
     addAndMakeVisible (*content);
 
+    addAndMakeVisible (bar);
+    bar.onThemeChanged = [this] { themeSeen = -1; };
+
    #if ! ONIRIQUE_TEST_BUILD   // la version d'essai locale n'a pas de licence
     licenseOverlay = std::make_unique<onirique::license::Overlay> ("ONIRIQUE TUNER", p.license);
     addAndMakeVisible (*licenseOverlay);
    #endif
 
     // taille d'ouverture : la règle commune des plugins ONIRIQUE (GUI/OniriqueWindowSize.h)
-    const int w = onirique::window::openingSize (p.apvts.state, "ONIRIQUE TUNER", { baseWidth, baseHeight },
-                                                 { baseWidth * 7 / 10, baseHeight * 7 / 10 }, { baseWidth * 2, baseHeight * 2 }).x;
+    constexpr int fullHeight = baseHeight + kTop;   // la façade et la barre au-dessus
+    const int w = onirique::window::openingSize (p.apvts.state, "ONIRIQUE TUNER", { baseWidth, fullHeight },
+                                                 { baseWidth * 7 / 10, fullHeight * 7 / 10 }, { baseWidth * 2, fullHeight * 2 }).x;
     setResizable (true, true);
-    getConstrainer()->setFixedAspectRatio ((double) baseWidth / (double) baseHeight);
-    setResizeLimits (baseWidth * 7 / 10, baseHeight * 7 / 10, baseWidth * 2, baseHeight * 2);
-    setSize (w, juce::roundToInt ((float) w * baseHeight / baseWidth));
+    getConstrainer()->setFixedAspectRatio ((double) baseWidth / (double) fullHeight);
+    setResizeLimits (baseWidth * 7 / 10, fullHeight * 7 / 10, baseWidth * 2, fullHeight * 2);
+    setSize (w, juce::roundToInt ((float) w * fullHeight / baseWidth));
     sizeRestored = true;
 
     startTimerHz (30);
@@ -500,28 +494,25 @@ void OniriqueTunerEditor::paint (juce::Graphics& g)
     g.fillAll (pal::plateBottom);
 }
 
+juce::Image OniriqueTunerEditor::barSigil()
+{
+    return juce::ImageCache::getFromMemory (BinaryData::sigil_png, BinaryData::sigil_pngSize);
+}
+
 void OniriqueTunerEditor::resized()
 {
     if (content == nullptr)
         return;
 
     const float scale = (float) getWidth() / (float) baseWidth;
-    if (themeButton.getParentComponent() == nullptr) addAndMakeVisible (themeButton);
-    themeButton.setBounds (juce::roundToInt (948 * scale), juce::roundToInt (20 * scale), juce::roundToInt (38 * scale), juce::roundToInt (26 * scale));
     content->setTransform (juce::AffineTransform::scale (scale));
-    content->setBounds (0, 0, baseWidth, baseHeight);
+    content->setBounds (0, kTop, baseWidth, baseHeight);   // sous la barre « Nuit »
 
+    bar.setPillWidth (licenseOverlay != nullptr ? licenseOverlay->pillWidth() : 0);
+    bar.place (scale, getLocalBounds());
     if (licenseOverlay != nullptr)
-    {
-        // Un bouton de l'en-tête, contre LIVE / HQ, à la hauteur de LATENCY et ON ; sa place suit son texte.
-        const int width = licenseOverlay->pillWidth();
-        licenseOverlay->fit (getLocalBounds(), scale, { 580 - width, 18, width, 30 });
-        content->placeHardTune (580 - width - 10);
-    }
-    else
-    {
-        content->placeHardTune (580);
-    }
+        licenseOverlay->fit (getLocalBounds(), scale, bar.getPillArea(), juce::Justification::centredRight);
+    content->placeHardTune (580);
     tuner.setEditorScale (scale);
     if (sizeRestored) onirique::window::remember (tuner.apvts.state, getWidth(), getHeight());   // taille gardée avec le projet
 }
