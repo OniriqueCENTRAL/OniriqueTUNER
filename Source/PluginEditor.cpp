@@ -523,6 +523,7 @@ void OniriqueTunerEditor::timerCallback()
     if (onirique::look::changedSince (themeSeen))
     {
         lookAndFeel.applyColours();
+        sendLookAndFeelChange();   // les menus (INPUT TYPE, KEY, SCALE) reprennent leurs couleurs tout de suite
         if (content != nullptr) content->dropBackground();   // le fond en cache se recalcule dans la nouvelle teinte
         std::function<void (juce::Component&)> all = [&all] (juce::Component& k) { k.repaint(); for (auto* ch : k.getChildren()) all (*ch); };
         all (*this);
