@@ -11,6 +11,7 @@ class TunerLookAndFeel final : public juce::LookAndFeel_V4
 {
 public:
     TunerLookAndFeel();
+    void applyColours();
 
     void drawRotarySlider (juce::Graphics&, int x, int y, int width, int height, float sliderPos,
                            float rotaryStartAngle, float rotaryEndAngle, juce::Slider&) override;

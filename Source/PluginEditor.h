@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GUI/TunerLookAndFeel.h"
+#include "../License/OniriqueThemeButton.h"
 #include "License/LicenseOverlay.h"
 #include "PluginProcessor.h"
 
@@ -35,6 +36,10 @@ private:
     // Pastille « mode démo » et page d'activation, par-dessus l'interface.
     std::unique_ptr<onirique::license::Overlay> licenseOverlay;
     juce::TooltipWindow tooltips { this, 600 };
+
+    onirique::look::ThemeButton themeButton;   // ⋯ : la couleur de l'interface
+
+    int themeSeen = -1;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (OniriqueTunerEditor)
 };

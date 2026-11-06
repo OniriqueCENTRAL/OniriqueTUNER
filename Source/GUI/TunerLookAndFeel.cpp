@@ -6,6 +6,14 @@ namespace onirique::ui
 
 TunerLookAndFeel::TunerLookAndFeel()
 {
+    onirique::look::load();   // la couleur de l'interface choisie
+    applyColours();
+}
+
+// les couleurs des menus et des champs (rappelée quand la couleur de l'interface change)
+void TunerLookAndFeel::applyColours()
+{
+    pal::refreshPalette();   // la façade dans la teinte de l'interface
     setColour (juce::ComboBox::textColourId, pal::ember.brighter (0.15f));
     setColour (juce::ComboBox::backgroundColourId, pal::glass);
     setColour (juce::ComboBox::outlineColourId, juce::Colours::black);

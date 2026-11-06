@@ -359,9 +359,9 @@ private:
     void layout()
     {
         // En-tête
-        power.setBounds (906, 17, 76, 32);
-        latency.setBounds (768, 17, 130, 32);
-        modeSwitch.setBounds (620, 17, 140, 32);
+        power.setBounds (868, 17, 72, 32);   // la place du bouton ⋯ (couleur de l'interface) à droite
+        latency.setBounds (738, 17, 122, 32);
+        modeSwitch.setBounds (590, 17, 140, 32);
 
         // SOURCE
         inputBox.setBounds (34, 110, 236, 32);
@@ -431,6 +431,9 @@ private:
 
     OniriqueTunerProcessor& tuner;
     Fonts fonts;
+    public:
+    void dropBackground() { background = {}; }
+    private:
     juce::Image sigil, brushed, background;
     float backgroundScale = 0.0f;
     std::atomic<float>* formant = nullptr;
@@ -503,6 +506,8 @@ void OniriqueTunerEditor::resized()
         return;
 
     const float scale = (float) getWidth() / (float) baseWidth;
+    if (themeButton.getParentComponent() == nullptr) addAndMakeVisible (themeButton);
+    themeButton.setBounds (juce::roundToInt (948 * scale), juce::roundToInt (20 * scale), juce::roundToInt (38 * scale), juce::roundToInt (26 * scale));
     content->setTransform (juce::AffineTransform::scale (scale));
     content->setBounds (0, 0, baseWidth, baseHeight);
 
@@ -510,12 +515,12 @@ void OniriqueTunerEditor::resized()
     {
         // Un bouton de l'en-tête, contre LIVE / HQ, à la hauteur de LATENCY et ON ; sa place suit son texte.
         const int width = licenseOverlay->pillWidth();
-        licenseOverlay->fit (getLocalBounds(), scale, { 610 - width, 18, width, 30 });
-        content->placeHardTune (610 - width - 10);
+        licenseOverlay->fit (getLocalBounds(), scale, { 580 - width, 18, width, 30 });
+        content->placeHardTune (580 - width - 10);
     }
     else
     {
-        content->placeHardTune (610);
+        content->placeHardTune (580);
     }
     tuner.setEditorScale (scale);
     if (sizeRestored) onirique::window::remember (tuner.apvts.state, getWidth(), getHeight());   // taille gardée avec le projet
@@ -523,6 +528,14 @@ void OniriqueTunerEditor::resized()
 
 void OniriqueTunerEditor::timerCallback()
 {
+    // la couleur de l'interface (menu ⋯, ou changée dans un autre plugin ONIRIQUE) : tout se redessine
+    if (onirique::look::changedSince (themeSeen))
+    {
+        lookAndFeel.applyColours();
+        if (content != nullptr) content->dropBackground();   // le fond en cache se recalcule dans la nouvelle teinte
+        std::function<void (juce::Component&)> all = [&all] (juce::Component& k) { k.repaint(); for (auto* ch : k.getChildren()) all (*ch); };
+        all (*this);
+    }
     refreshDisplays (1.0 / 30.0);
 }
 
