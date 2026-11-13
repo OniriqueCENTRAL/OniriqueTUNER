@@ -11,8 +11,6 @@ on:
 
 jobs:
   mac:
-    # EN PAUSE (05/11/2026) : le Mac se compile sur une vraie machine Mac de l'équipe ; enlever « if: false » pour le rallumer
-    if: false
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
