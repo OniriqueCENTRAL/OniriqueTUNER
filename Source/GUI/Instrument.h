@@ -1,6 +1,6 @@
 #pragma once
 #include "OniriqueDA.h"     // la DA de VOCALBOX (fond, verre, boutons, témoins)
-#include "OniriqueKnobLogo.h"   // le potard « Viseur »
+#include "OniriqueKnobLogo.h"   // le potard « Ronce »
 
 #include "Theme.h"
 
@@ -106,8 +106,8 @@ inline void menuArrow (juce::Graphics& g, float x, float y, juce::Colour c)
     - un chapeau tourné (reflets en croix du métal usiné), et l'index gravé qui va jusque sur la jupe. */
 inline void drawInstrumentKnob (juce::Graphics& g, juce::Rectangle<float> area, float pos, float start, float end, bool hot, bool bipolar)
 {
-    // le potard « Viseur » (onglet KNOB de l'administration) : la croix de visée du logo
-    onirique::ui::drawKnobViseur (g, area, pos, start, end, onirique::look::ember, bipolar, hot);
+    // le potard « Ronce » (onglet KNOB de l'administration) : l'arc pousse des épines comme une ronce
+    onirique::ui::drawKnobRonce (g, area, pos, start, end, onirique::look::ember, bipolar, hot);
 }
 
 /** Le métal brossé : des stries horizontales, chaque rangée un peu plus claire ou plus sombre (tuile à répéter). */
