@@ -158,6 +158,27 @@ if(MSVC)
 endif()
 
 # ---------------------------------------------------------------------------
+#  Outil de développement : banc d'essai en boîte noire de n'importe quel
+#  correcteur de hauteur VST3 (interface dans une fenêtre, courbes, rapport).
+#      cmake --build build --config Release --target OniriqueTunerBench
+# ---------------------------------------------------------------------------
+juce_add_console_app(OniriqueTunerBench PRODUCT_NAME "OniriqueTunerBench")
+set_target_properties(OniriqueTunerBench PROPERTIES EXCLUDE_FROM_ALL TRUE)
+target_sources(OniriqueTunerBench PRIVATE Tools/Bench.cpp)
+target_compile_definitions(OniriqueTunerBench PRIVATE
+    JUCE_PLUGINHOST_VST3=1
+    JUCE_MODAL_LOOPS_PERMITTED=1
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0)
+target_link_libraries(OniriqueTunerBench PRIVATE
+    juce::juce_audio_processors
+    juce::juce_recommended_config_flags)
+
+if(MSVC)
+    target_compile_options(OniriqueTunerBench PRIVATE /utf-8)
+endif()
+
+# ---------------------------------------------------------------------------
 #  Outil de développement : banc d'essai de la licence (vérification des
 #  fichiers .lic, et son du plugin en temps réel puis en export).
 #      cmake --build build --config Release --target OniriqueLicenseTest
