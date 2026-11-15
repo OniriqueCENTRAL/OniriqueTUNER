@@ -89,6 +89,8 @@ private:
     std::atomic<float>* hardTune = nullptr;
     std::atomic<float>* flex = nullptr;
     std::atomic<float>* humanize = nullptr;
+    std::atomic<float>* sustain = nullptr;
+    std::atomic<float>* amount = nullptr;
     std::atomic<float>* vibrato = nullptr;
     std::atomic<float>* formant = nullptr;
     std::atomic<float>* throat = nullptr;

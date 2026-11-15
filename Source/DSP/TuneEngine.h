@@ -24,6 +24,8 @@ struct EngineParams
     bool narrowVibrato = false;          // seuil de vibrato étroit (voir CorrectorParams)
     float flex = 0.0f;                   // 0..1
     float humanize = 0.0f;               // 0..1
+    float sustain = 0.0f;                // -1..1 (voir CorrectorParams)
+    float amount = 1.0f;                 // 0..1 : part de l'écart à la note rattrapée
     float vibrato = 0.0f;                // -1..1
     VibratoParams createdVibrato;        // vibrato ajouté (bouton VIBRATO)
     bool formant = false;                // true = formants préservés, false = son classique

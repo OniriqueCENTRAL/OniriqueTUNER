@@ -196,7 +196,8 @@ public:
           tracking (p.apvts, ids::tracking, "Tracking"),
           retune (p.apvts, ids::retune, "Retune Speed"),
           flex (p.apvts, ids::flex, "Flex-Tune"),
-          humanize (p.apvts, ids::humanize, "Humanize"),
+          sustain (p.apvts, ids::sustain, "Sustain", true),
+          amount (p.apvts, ids::amount, "Amount"),
           vibrato (p.apvts, ids::vibrato, "Natural Vibrato", true),
           mix (p.apvts, ids::mix, "Mix"),
           vibratoButton (p.apvts.getRawParameterValue (ids::vibOn)),
@@ -222,7 +223,7 @@ public:
 
         for (auto* child : std::initializer_list<juce::Component*> { &dial, &trace, &modeSwitch, &latency, &power, &hardTuneButton, &inputBox, &keyBox, &scaleBox,
                                                                       &notes, &formantButton, &throat, &transpose, &detune, &vocoderButton,
-                                                                      &voicingBox, &blend, &tracking, &retune, &flex, &humanize, &vibrato, &mix })
+                                                                      &voicingBox, &blend, &tracking, &retune, &flex, &sustain, &vibrato, &amount, &mix })
             addAndMakeVisible (child);
         power.setVisible (false);   // marche / arrêt : IN dans la barre « Nuit »
 
@@ -270,12 +271,12 @@ public:
         vibratoButton.refresh();
 
         // Hard Tune impose la note, plate, et saute d'une note à l'autre d'un
-        // coup : Retune Speed, Flex-Tune, Humanize et Natural Vibrato n'ont plus
+        // coup : Retune Speed, Flex-Tune, Sustain et Natural Vibrato n'ont plus
         // rien à régler (le vibrato créé, lui, s'ajoute toujours).
         const bool natural = ! tuner.isHardTuneOn();
         if (natural != flex.isEnabled())
         {
-            for (auto* knob : { &retune, &flex, &humanize, &vibrato })
+            for (auto* knob : { &retune, &flex, &sustain, &vibrato })
             {
                 knob->setEnabled (natural);
                 knob->setAlpha (natural ? 1.0f : 0.4f);
@@ -387,12 +388,13 @@ private:
         trace.setBounds (18, 356, 964, 112);
 
         // Rangée du bas
-        tracking.setBounds (30, 500, 108, 120);
-        retune.setBounds (166, 482, 150, 156);
-        flex.setBounds (342, 482, 150, 156);
-        humanize.setBounds (508, 482, 150, 156);
-        vibrato.setBounds (684, 482, 150, 156);
-        mix.setBounds (862, 500, 108, 120);
+        tracking.setBounds (24, 500, 104, 120);
+        retune.setBounds (140, 482, 150, 156);
+        flex.setBounds (294, 482, 150, 156);
+        sustain.setBounds (448, 482, 150, 156);
+        vibrato.setBounds (602, 482, 150, 156);
+        amount.setBounds (764, 500, 104, 120);
+        mix.setBounds (874, 500, 104, 120);
     }
 
     void drawBackground (juce::Graphics& g) const
@@ -442,7 +444,7 @@ private:
     juce::ComboBox voicingBox;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> voicingAttachment;
     Fader blend;
-    Knob tracking, retune, flex, humanize, vibrato, mix;
+    Knob tracking, retune, flex, sustain, vibrato, amount, mix;
     VibratoButton vibratoButton;
     ClickCatcher catcher;
     VibratoPanel vibratoPanel;

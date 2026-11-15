@@ -120,6 +120,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     for (int note = 0; note < 12; ++note)
         layout.add (std::make_unique<Bool> (juce::ParameterID { noteSkipId (note), 1 }, juce::String ("Bypass ") + tune::noteNames[note], false));
 
+    // Ajouts de la 1.3.0, à la fin : les projets et les automations existants ne bougent pas.
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::sustain, 1 }, "Sustain", Range (-100.0f, 100.0f, 0.1f), 0.0f,
+                                         withText ([] (float v)
+                                         {
+                                             const auto amount = juce::String (juce::roundToInt (std::abs (v))) + " %";
+                                             return std::abs (v) < 0.5f ? juce::String ("0 %") : (v < 0.0f ? "Humanize " : "Steady ") + amount;
+                                         })));
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::amount, 1 }, "Amount", Range (0.0f, 100.0f, 0.1f), 100.0f, percent));
+
     return layout;
 }
 

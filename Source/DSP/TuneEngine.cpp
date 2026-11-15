@@ -326,6 +326,8 @@ void TuneEngine::setParams (const EngineParams& p) noexcept
     params.retuneMs = clean (p.retuneMs, 0.0f, 2000.0f, 20.0f);
     params.flex = clean (p.flex, 0.0f, 1.0f, 0.0f);
     params.humanize = clean (p.humanize, 0.0f, 1.0f, 0.0f);
+    params.sustain = clean (p.sustain, -1.0f, 1.0f, 0.0f);
+    params.amount = clean (p.amount, 0.0f, 1.0f, 1.0f);
     params.vibrato = clean (p.vibrato, -1.0f, 1.0f, 0.0f);
     params.throat = clean (p.throat, 0.5f, 2.0f, 1.0f);
     params.transpose = clean (p.transpose, -24.0f, 24.0f, 0.0f);
@@ -339,6 +341,8 @@ void TuneEngine::setParams (const EngineParams& p) noexcept
     correctorParams.hard = params.hardTune;
     correctorParams.flex = params.flex;
     correctorParams.humanize = params.humanize;
+    correctorParams.sustain = params.sustain;
+    correctorParams.amount = params.amount;
     correctorParams.vibrato = params.vibrato;
     correctorParams.transpose = params.transpose;
     correctorParams.a4 = 440.0 * std::pow (2.0, (double) params.detuneCents / 1200.0);

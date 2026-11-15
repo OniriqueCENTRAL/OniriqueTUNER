@@ -1055,6 +1055,50 @@ void testCreatedVibrato (double fs)
     }
 }
 
+void testSustainAmount (double fs)
+{
+    std::printf ("\n[4c bis] Vitesse, Sustain et Amount : la3, vibrato 5,5 Hz +/- 40 cents\n");
+
+    const VoiceModel model (fs);
+    const double centre = 220.0;
+    const auto vibrated = [centre] (double t) { return centre * std::pow (2.0, 0.40 * std::sin (6.283185307 * 5.5 * t) / 12.0); };
+    const auto flat = [centre] (double) { return centre; };
+    const auto voice = synthVoice (model, 3.0, vibrated);
+    const auto from = (int) (1.2 * fs), to = (int) (2.8 * fs);
+    const double input = pitchStats (voice, fs, from, to, flat).spreadCents;
+
+    const auto spreadWith = [&] (float retune, float humanize, float sustain)
+    {
+        EngineParams p;
+        p.hq = true;
+        p.retuneMs = retune;
+        p.humanize = humanize;
+        p.sustain = sustain;
+        return pitchStats (run (voice, fs, p), fs, from, to, flat).spreadCents;
+    };
+
+    // Un correcteur ne doit jamais rendre le vibrato plus large que celui de la voix.
+    double worst = 0.0;
+    for (float retune : { 20.0f, 85.0f, 180.0f, 400.0f })
+        for (float humanize : { 0.0f, 1.0f })
+            worst = std::max (worst, spreadWith (retune, humanize, 0.0f) / input);
+    const double steady = spreadWith (20.0f, 0.0f, 1.0f) / input, plain = spreadWith (20.0f, 0.0f, 0.0f) / input, soft = spreadWith (20.0f, 0.0f, -1.0f) / input;
+    std::printf ("    vibrato garde : au plus %.0f %% (Retune 20 a 400 ms, Humanize 0 et 100 %%) ; Sustain +100 : %.0f %%, 0 : %.0f %%, -100 : %.0f %%\n",
+                 100.0 * worst, 100.0 * steady, 100.0 * plain, 100.0 * soft);
+    check (worst < 1.03, "la correction ne doit jamais amplifier le vibrato");
+    check (steady < 0.25, "Sustain +100 doit rendre les notes tenues droites");
+    check (soft > plain + 0.2, "Sustain -100 doit laisser plus de vibrato");
+
+    // Amount : une voix trop haute de 40 cents, corrigée aux trois quarts, garde 10 cents.
+    const auto sharp = synthVoice (model, 2.0, [centre] (double) { return centre * std::pow (2.0, 0.40 / 12.0); });
+    EngineParams p;
+    p.hq = true;
+    p.amount = 0.75f;
+    const auto part = pitchStats (run (sharp, fs, p), fs, (int) (0.8 * fs), (int) (1.8 * fs), flat);
+    std::printf ("    Amount 75 %% sur une voix a +40 cents : %+.1f cents\n", part.meanCents);
+    check (std::abs (part.meanCents - 10.0) < 3.0, "Amount 75 % doit laisser un quart de l'ecart");
+}
+
 void testMelody (double fs)
 {
     std::printf ("\n[5] Melodie glissee : la hauteur passe d'une note a l'autre en 60 ms\n");
@@ -2309,6 +2353,7 @@ int main (int argc, char** argv)
             testVibrato (fs);
             testHardSteps (fs);
             testCreatedVibrato (fs);
+            testSustainAmount (fs);
             testSkippedNotes (fs);
             testVibratoFx (fs);
             testMelody (fs);

@@ -20,6 +20,8 @@ OniriqueTunerProcessor::OniriqueTunerProcessor()
     hardTune = apvts.getRawParameterValue (ids::hardTune);
     flex = apvts.getRawParameterValue (ids::flex);
     humanize = apvts.getRawParameterValue (ids::humanize);
+    sustain = apvts.getRawParameterValue (ids::sustain);
+    amount = apvts.getRawParameterValue (ids::amount);
     vibrato = apvts.getRawParameterValue (ids::vibrato);
     formant = apvts.getRawParameterValue (ids::formant);
     throat = apvts.getRawParameterValue (ids::throat);
@@ -156,6 +158,8 @@ onirique::tune::EngineParams OniriqueTunerProcessor::readParams() const noexcept
     p.narrowVibrato = vibThreshold->load() > 0.5f;
     p.flex = flex->load() * 0.01f;
     p.humanize = humanize->load() * 0.01f;
+    p.sustain = sustain->load() * 0.01f;
+    p.amount = amount->load() * 0.01f;
     p.vibrato = vibrato->load() / 12.0f;
     p.createdVibrato.on = vibOn->load() > 0.5f;
     p.createdVibrato.shape = juce::roundToInt (vibShape->load());
@@ -266,6 +270,15 @@ void OniriqueTunerProcessor::setStateInformation (const void* data, int sizeInBy
             restoringState.store (true);
             apvts.replaceState (state);
             restoringState.store (false);
+
+            // Projets d'avant la 1.3.0 : leur Humanize passe sur le côté gauche de Sustain, le potard qui le remplace.
+            if (! state.getChildWithProperty ("id", ids::sustain).isValid() && humanize->load() > 0.0f)
+            {
+                auto* target = apvts.getParameter (ids::sustain);
+                target->setValueNotifyingHost (target->convertTo0to1 (-humanize->load()));
+                auto* old = apvts.getParameter (ids::humanize);
+                old->setValueNotifyingHost (old->convertTo0to1 (0.0f));
+            }
         }
     }
 }

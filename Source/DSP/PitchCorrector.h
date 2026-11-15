@@ -25,6 +25,8 @@ struct CorrectorParams
     float retuneMs = 20.0f;      // temps pour amener la voix sur la note (0 = immédiat)
     float flex = 0.0f;           // 0..1 : ne corrige qu'à l'approche de la note
     float humanize = 0.0f;       // 0..1 : correction plus lente sur la partie tenue des notes longues
+    float sustain = 0.0f;        // -1..1 : partie tenue des notes longues, plus libre (< 0, comme Humanize) ou plus droite (> 0)
+    float amount = 1.0f;         // 0..1 : part de l'écart à la note que la correction rattrape
     float vibrato = 0.0f;        // -1..1 : atténue ou accentue le vibrato naturel
     float transpose = 0.0f;      // demi-tons
     double a4 = 440.0;           // diapason
@@ -41,11 +43,15 @@ struct CorrectorParams
     - La note visée est, en continu, la note de la gamme la plus proche de la
       voix.
     - La correction amène la voix sur cette note en Retune Speed millisecondes
-      (deux pôles en cascade : départ et arrivée arrondis). Rapide, elle
+      (un pôle : elle n'amplifie jamais le vibrato de la voix), changements de
+      note compris. Rapide, elle
       aplatit tout, vibrato compris ; lente, elle ne recentre que la note et
       laisse passer le vibrato et les inflexions. À 0, la note est imposée
       telle quelle.
-    - Humanize allonge ce temps sur la partie tenue des notes longues.
+    - Humanize allonge ce temps sur la partie tenue des notes longues ; Sustain
+      l'allonge (vers la gauche) ou le raccourcit (vers la droite : les notes
+      tenues deviennent droites sans que l'arrivée sur la note change).
+    - Amount ne rattrape qu'une part de l'écart à la note.
     - Flex-Tune ne corrige que lorsque la voix s'approche de la note.
     - Natural Vibrato agrandit ou réduit le vibrato de la voix avant correction.
 
@@ -114,6 +120,7 @@ private:
     int recentIndex = 0, recentCount = 0;
     double velocity = 0.0;       // vitesse signée de la voix (demi-tons par seconde)
     double velocityAt = 0.0;     // ... mesurée là (milieu de sa fenêtre)
+    double instant = 0.0, instantPeak = 0.0;   // vitesse de la voix d'une mesure à l'autre, et son plus haut pendant le glissé
     std::array<double, 48> riseSpeed {}, riseTravel {};   // glissé en cours, en accélérant : vitesse -> chemin fait
     int riseCount = 0;
     void rememberRise (double speed, double travel) noexcept;
@@ -127,7 +134,7 @@ private:
     double bandTime = 0.0, calmTime = 0.0, glideSpeed = 0.0, stillTime = 0.0, stillFrom = 0.0;
     bool turned = false;
     double settled = 0.0;        // depuis quand la voix est posée loin du centre
-    double shiftA = 0.0, shift = 0.0;     // correction en cours (demi-tons), deux pôles
+    double shift = 0.0;          // correction en cours (demi-tons)
 
     // vibrato créé
     double vibPhase = 0.0, vibTime = 0.0, vibRateScale = 1.0, vibDepthScale = 1.0, vibShapeNow = 0.0;

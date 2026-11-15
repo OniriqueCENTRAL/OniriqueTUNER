@@ -12,6 +12,7 @@ namespace
     constexpr double twoPi = 6.283185307179586;
 
     constexpr double quickHz = 25.0;            // lissage léger de la hauteur mesurée (gigue du détecteur)
+    constexpr double instantHz = 60.0;          // vitesse instantanée : voit la voix s'arrêter bien avant la fenêtre de `velocity`
     constexpr double centreSeconds = 0.18;      // une période de vibrato à 5,5 Hz : la moyenne l'efface
     constexpr double centreJump = 0.85;         // demi-tons d'écart au centre : au-delà, la voix a changé de note
     // Seuil de vibrato étroit (comme le réglage « Narrow » d'Auto-Tune) : seul un vibrato discret compte pour du
@@ -53,9 +54,14 @@ namespace
     constexpr double resumeMs = 4.0;
 
     // Humanize : sur la partie tenue d'une note longue, la correction peut
-    // devenir jusqu'à 7 fois plus lente.
+    // devenir jusqu'à 7 fois plus lente ; Sustain à droite, jusqu'à 13 fois plus rapide.
     constexpr double sustainFrom = 0.15, sustainTo = 0.40;   // s : la note devient "tenue"
     constexpr double humanizeSlowdown = 6.0;
+    constexpr double steadySpeedup = 12.0;
+
+    // Retune Speed -> constante de temps d'un pôle. 0,52 garde, aux vitesses rapides, le
+    // même vibrato qu'avant (deux pôles à 0,26) ; un pôle ne l'amplifie à aucune vitesse.
+    constexpr double tauPerRetune = 0.52;
 
     double smoothStep (double lo, double hi, double x) noexcept
     {
@@ -140,10 +146,10 @@ void PitchCorrector::reset() noexcept
     quick = 0.0;
     recentIndex = recentCount = 0;
     resetCentre (0.0);
-    shiftA = shift = 0.0;
+    shift = 0.0;
     vibPhase = vibTime = vibShapeNow = 0.0;
     vibRateScale = vibDepthScale = 1.0;
-    velocity = 0.0;
+    velocity = instant = instantPeak = 0.0;
     gliding = false;
     glideHold = glideTime = swing = excursion = bandTime = 0.0;
     resumeTime = 1.0;
@@ -227,9 +233,9 @@ PitchCorrector::Output PitchCorrector::process (bool voiced, double frequencyHz,
         quick = wanted;
         recentIndex = recentCount = 0;
         resetCentre (wanted);
-        shiftA = shift = 0.0;
+        shift = 0.0;
         vibTime = vibPhase = 0.0;
-        velocity = 0.0;
+        velocity = instant = instantPeak = 0.0;
         gliding = false;
         swing = excursion = 0.0;
         resumeTime = 1.0;
@@ -241,7 +247,9 @@ PitchCorrector::Output PitchCorrector::process (bool voiced, double frequencyHz,
     silentFor = 0.0;
     held += dt;
 
+    const double before = quick;
     quick += followHz (dt, quickHz) * (wanted - quick);
+    instant += followHz (dt, instantHz) * (std::abs (quick - before) / dt - instant);
     updateCentre (quick, dt);
 
     const double vibrato = createdVibrato (dt, p.created);
@@ -250,7 +258,7 @@ PitchCorrector::Output PitchCorrector::process (bool voiced, double frequencyHz,
     // s'ajoute toujours). La correction repart de zéro en sortant : aucun saut.
     if (p.hard && skipped (quick, p.skipMask))
     {
-        shiftA = shift = 0.0;
+        shift = 0.0;
         return finish (pitch, wanted + vibrato, 0.0f);
     }
 
@@ -261,8 +269,10 @@ PitchCorrector::Output PitchCorrector::process (bool voiced, double frequencyHz,
         chooseNote (quick, hardHysteresis, p.noteMask);
 
         // Garde la correction prête : repasser en accordage classique se fait sans saut.
-        shiftA = shift = (double) target - wanted;
-        return finish (pitch, (double) target + vibrato, 1.0f);
+        // Amount < 1 : la voix ne fait qu'une part du chemin vers la note.
+        const double amount = std::clamp ((double) p.amount, 0.0, 1.0);
+        shift = amount * ((double) target - wanted);
+        return finish (pitch, wanted + shift + vibrato, (float) smoothStep (0.98, 0.999, amount));
     }
 
     // Note de la gamme dont la voix est la plus proche en ce moment, et depuis
@@ -293,6 +303,7 @@ PitchCorrector::Output PitchCorrector::process (bool voiced, double frequencyHz,
             bandTime = 0.0;
             calmTime = 0.0;
             glideSpeed = std::abs (velocity);
+            instantPeak = instant;
             glideDirection = velocity > 0.0 ? 1 : -1;
             turned = false;
             departNote = target;
@@ -304,7 +315,7 @@ PitchCorrector::Output PitchCorrector::process (bool voiced, double frequencyHz,
             // On garde la correction de la note quittée, telle qu'elle était
             // avant le départ (vibrato et départ ôtés).
             const double left = (double) target - anchor;
-            glideHold = flexWeight (left, p.flex) * left;
+            glideHold = std::clamp ((double) p.amount, 0.0, 1.0) * flexWeight (left, p.flex) * left;
         }
         else
         {
@@ -367,7 +378,8 @@ PitchCorrector::Output PitchCorrector::process (bool voiced, double frequencyHz,
 
     const double toNote = (double) target - voice;
     const bool ignored = skipped (gliding ? quick : centre, p.skipMask);
-    double aim = ignored ? 0.0 : flexWeight (toNote, p.flex) * toNote;
+    const double amount = std::clamp ((double) p.amount, 0.0, 1.0);
+    double aim = ignored ? 0.0 : amount * flexWeight (toNote, p.flex) * toNote;
 
     if (gliding)
     {
@@ -380,41 +392,45 @@ PitchCorrector::Output PitchCorrector::process (bool voiced, double frequencyHz,
         // la sortie y arrive en même temps que la voix. Quand la voix s'arrête,
         // c'est là où elle est qui compte. Près du milieu de deux notes la
         // correction visée vaut zéro : jamais d'à-coup d'une note à l'autre.
-        const auto towards = [&p] (double at)
+        const auto towards = [&p, amount] (double at)
         {
             if (skipped (at, p.skipMask))
                 return 0.0;
             const int note = nearestNote (at, p.noteMask);
             const double to = (double) note - at;
             const double half = halfGap (note, at, p.noteMask);
-            return (1.0 - smoothStep (0.7 * half, half, std::abs (to))) * flexWeight (to, p.flex) * to;
+            return amount * (1.0 - smoothStep (0.7 * half, half, std::abs (to))) * flexWeight (to, p.flex) * to;
         };
 
         const double peakTravel = riseTravel[(size_t) riseCount - 1];
         const double remaining = travelAtRise (std::abs (velocity));
-        const double braking = std::clamp (1.0 - std::abs (velocity) / glideSpeed, 0.0, 1.0);
+        // La voix freine : vu sur sa fenêtre de vitesse, ou plus tôt d'une mesure à l'autre (un saut
+        // franc s'arrête en quelques millisecondes, bien avant que la fenêtre ne le voie).
+        instantPeak = std::max (instantPeak, instant);
+        const double braking = std::clamp (1.0 - std::min (std::abs (velocity) / glideSpeed, instant / std::max (instantPeak, 1.0e-9)), 0.0, 1.0);
         const double stopped = braking * braking;
         const double landing = (1.0 - stopped) * towards (velocityAt + (double) glideDirection * remaining) + stopped * towards (quick);
         const double progress = std::max (stopped, peakTravel > 0.02 ? std::clamp (1.0 - remaining / peakTravel, 0.0, 1.0) : 0.0);
         aim = glideHold + progress * (landing - glideHold);
     }
 
-    // Retune Speed : temps pour atteindre la note (90 % du chemin), par deux
-    // pôles en cascade. Humanize l'allonge sur la partie tenue des notes longues.
-    // Pendant un glissé, la correction rejoint vite sa valeur figée ; juste
-    // après l'arrivée, elle ne reprend jamais d'un coup.
+    // Retune Speed : un pôle, partout, changements de note compris (à vitesse
+    // lente, la voix glisse vers sa nouvelle note). Humanize et Sustain à gauche
+    // l'allongent sur la partie tenue des notes longues, Sustain à droite l'y
+    // raccourcit. Juste après l'arrivée, la correction ne reprend jamais d'un coup.
     const double sustain = smoothStep (sustainFrom, sustainTo, held);
-    const double retuneMs = (double) p.retuneMs * (1.0 + humanizeSlowdown * (double) p.humanize * sustain);
-    const double tauMs = gliding ? releaseMs : std::max (0.26 * retuneMs, resumeTime < resumeSeconds ? resumeMs : 0.0);
-    const double alpha = follow (dt, tauMs);
-    shiftA += alpha * (aim - shiftA);
-    shift += alpha * (shiftA - shift);
+    const double soften = std::max ((double) p.humanize, -(double) p.sustain);
+    const double steady = std::max (0.0, (double) p.sustain);
+    const double retuneMs = (double) p.retuneMs * (1.0 + humanizeSlowdown * soften * sustain) / (1.0 + steadySpeedup * steady * sustain);
+    const double tauMs = std::max (tauPerRetune * retuneMs, gliding ? releaseMs : resumeTime < resumeSeconds ? resumeMs : 0.0);
+    shift += follow (dt, tauMs) * (aim - shift);
 
     // À Retune 0 la note est imposée exactement (sans la gigue de la mesure) ;
     // dès que la correction prend du temps, la voix garde ses micro-variations.
     // Pendant un glissé, et le temps de la reprise, la voix garde les siennes.
     const double resumed = gliding || ignored ? 0.0 : smoothStep (0.0, resumeSeconds, resumeTime);
-    const float pin = (float) (resumed * (1.0 - smoothStep (0.5, 4.0, retuneMs)) * smoothStep (0.9, 0.999, flexWeight (toNote, p.flex)));
+    const float pin = (float) (resumed * (1.0 - smoothStep (0.5, 4.0, retuneMs)) * smoothStep (0.9, 0.999, flexWeight (toNote, p.flex))
+                               * smoothStep (0.98, 0.999, amount));
     return finish (pitch, voice + shift + vibrato, pin);
 }
 

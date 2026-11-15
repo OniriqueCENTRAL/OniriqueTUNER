@@ -38,6 +38,9 @@ namespace id
     inline constexpr const char* vibAmplitude = "vibAmplitude";   // le volume suit le vibrato créé
     inline constexpr const char* vibTimbre    = "vibTimbre";      // l'éclat suit le vibrato créé
     inline constexpr const char* vibThreshold = "vibThreshold";   // seuil de vibrato : Wide / Narrow
+
+    inline constexpr const char* sustain = "sustain";   // partie tenue des notes : plus libre (< 0) ou plus droite (> 0)
+    inline constexpr const char* amount  = "amount";    // part de l'écart à la note que la correction rattrape
 }
 
 /** Identifiant de l'interrupteur d'une note (0 = do ... 11 = si). Il inverse
